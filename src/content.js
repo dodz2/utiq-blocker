@@ -44,6 +44,39 @@ var intercepteurDejaInjecte = false;
 var protectionActive = true;
 var hostnameActuel = window.location.hostname;
 
+// --- Patterns heuristiques pour détecter les scripts de tracking ---
+var PATTERNS_HEURISTIQUES = [
+  // Recherche de "utiq" (insensible à la casse)
+  /utiq/i,
+  // APIs de fingerprinting de périphérique
+  /navigator\.userAgentData/i,
+  /canvas\.toDataURL/i,
+  /getImageData/i,
+  /AudioContext/i,
+  /webkitAudioContext/i,
+  // APIs de télécom/opérateur
+  /navigator\.connection/i,
+  /effectiveType/i,
+  /rtt\b/i,
+  // Collection d'empreintes (fingerprinting)
+  /screen\.colorDepth/i,
+  /screen\.pixelDepth/i,
+  /navigator\.plugins/i,
+  /navigator\.language/i,
+  /Intl\.DateTimeFormat/i,
+  // Patterns de tracking réseau
+  /beacon/i,
+  /sendBeacon/i,
+  // Stockage local suspect
+  /localStorage\.setItem/i,
+  /sessionStorage\.setItem/i,
+  // Cookies dynamiques
+  /document\.cookie\s*=/i
+];
+
+// --- Seuil de détection (nombre de patterns trouvés pour considérer un script comme suspect) ---
+var SEUIL_HEURISTIQUE = 3;
+
 // ===============================================================
 // FONCTIONS DE DÉTECTION
 // ===============================================================
@@ -100,6 +133,27 @@ function supprimerElementUtiq(element, raison) {
   }
 }
 
+/**
+ * Analyse le contenu d'un script pour détecter des comportements
+ * de tracking heuristiques (fingerprinting, APIs télécom, etc.)
+ * @param {string} contenu - Le contenu textuel du script.
+ * @returns {boolean} Vrai si le script est suspect.
+ */
+function analyserScriptHeuristique(contenu) {
+  if (!contenu || typeof contenu !== "string") return false;
+  
+  var score = 0;
+  for (var i = 0; i < PATTERNS_HEURISTIQUES.length; i++) {
+    if (PATTERNS_HEURISTIQUES[i].test(contenu)) {
+      score++;
+      if (score >= SEUIL_HEURISTIQUE) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ===============================================================
 // NETTOYAGE DES ÉLÉMENTS DOM
 // ===============================================================
@@ -117,11 +171,12 @@ function nettoyerElementsUtiq() {
     }
   }
 
-  // Suppression des scripts inline contenant des URLs Utiq
+  // Suppression des scripts inline contenant des URLs Utiq ou comportement suspect
   var scriptsInline = document.querySelectorAll("script:not([src])");
   for (var j = 0; j < scriptsInline.length; j++) {
-    if (contientDomaineUtiq(scriptsInline[j].textContent)) {
-      supprimerElementUtiq(scriptsInline[j], "script inline");
+    var contenuScript = scriptsInline[j].textContent;
+    if (contientDomaineUtiq(contenuScript) || analyserScriptHeuristique(contenuScript)) {
+      supprimerElementUtiq(scriptsInline[j], "script inline suspect");
     }
   }
 
@@ -257,9 +312,14 @@ function demarrerSurveillanceDOM() {
         var tag = element.tagName;
 
         // Vérifie les scripts injectés
-        if (tag === "SCRIPT" && element.src && contientDomaineUtiq(element.src)) {
-          supprimerElementUtiq(element, "script injecté");
-          doitNettoyer = true;
+        if (tag === "SCRIPT") {
+          if (element.src && contientDomaineUtiq(element.src)) {
+            supprimerElementUtiq(element, "script injecté");
+            doitNettoyer = true;
+          } else if (!element.src && analyserScriptHeuristique(element.textContent)) {
+            supprimerElementUtiq(element, "script injecté suspect");
+            doitNettoyer = true;
+          }
         }
 
         // Vérifie les iframes injectées
