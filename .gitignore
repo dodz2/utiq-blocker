@@ -1,0 +1,35 @@
+# Extension Firefox — Fichiers à exclure du dépôt
+
+# Système d'exploitation
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Éditeurs / IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Archives et builds
+*.zip
+*.tar.gz
+*.rar
+web-ext-artifacts/
+
+# Fichiers temporaires et logs
+*.log
+tmp/
+temp/
+
+# Dépendances (non applicable ici, mais bonne pratique)
+node_modules/
+package-lock.json

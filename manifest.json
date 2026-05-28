@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "Utiq Blocker",
+  "version": "1.0.0",
+  "description": "Bloque le système de tracking Utiq (operator-based tracking) et neutralise ses composants sur les pages web.",
+  "permissions": [
+    "declarativeNetRequest",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["src/background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["src/content.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "utiq_rules",
+        "enabled": true,
+        "path": "rules/rules.json"
+      }
+    ]
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Utiq Blocker",
+    "default_icon": {
+      "16": "icons/icon-16.svg",
+      "32": "icons/icon-32.svg",
+      "48": "icons/icon-48.svg",
+      "128": "icons/icon-128.svg"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.svg",
+    "32": "icons/icon-32.svg",
+    "48": "icons/icon-48.svg",
+    "128": "icons/icon-128.svg"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "utiq-blocker@dodz2.github.io",
+      "strict_min_version": "109.0"
+    }
+  }
+}

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Utiq Blocker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+
+    <!-- En-tête avec le logo et le titre -->
+    <header class="header">
+      <div class="header-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="32" height="32">
+          <path fill="#4CAF50" d="M24 0L3 9v13.5c0 11.3 8.8 21.7 21 25.5 12.2-3.8 21-14.2 21-25.5V9L24 0z"/>
+          <path fill="#FFF" d="M15 15h6v9c0 3.3 2.7 6 6 6s6-2.7 6-6v-9h6v9c0 6.6-5.4 12-12 12s-12-5.4-12-12v-9z"/>
+        </svg>
+      </div>
+      <h1 class="title">Utiq Blocker</h1>
+      <span class="version">v1.0.0</span>
+    </header>
+
+    <!-- État de protection et toggle -->
+    <section class="status-section">
+      <div class="status-row">
+        <span class="status-label">Protection</span>
+        <label class="toggle" id="toggleContainer">
+          <input type="checkbox" id="toggleEnabled" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <p class="status-text" id="statusText">
+        Analyse en cours...
+      </p>
+    </section>
+
+    <!-- Compteur de blocages sur la page courante -->
+    <section class="stats-section">
+      <div class="stat-card">
+        <span class="stat-number" id="tabBlockCount">0</span>
+        <span class="stat-label">Blocages<br>sur cette page</span>
+      </div>
+      <div class="stat-card">
+        <span class="stat-number" id="globalBlockCount">0</span>
+        <span class="stat-label">Blocages<br>totaux</span>
+      </div>
+    </section>
+
+    <!-- Pied de page -->
+    <footer class="footer">
+      <span class="footer-text">
+        Traitement 100% local &middot; Aucune donnée ne quitte votre navigateur
+      </span>
+    </footer>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
