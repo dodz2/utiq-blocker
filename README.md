@@ -65,12 +65,14 @@ utiq-blocker/
 
 ## Installation
 
+> ⚠️ **Important** : N'utilisez PAS le bouton « Download ZIP » de GitHub. Téléchargez le fichier `utiq-blocker.zip` depuis la page [Releases](https://github.com/dodz2/utiq-blocker/releases).
+
 ### Méthode 1 : Chargement temporaire (about:debugging)
 
-1. Ouvrez Firefox
-2. Dans la barre d'adresse, tapez `about:debugging#/runtime/this-firefox`
-3. Cliquez sur **« Charger un module complémentaire temporaire... »**
-4. Sélectionnez le fichier `manifest.json` du projet
+1. Téléchargez `utiq-blocker.zip` depuis [les Releases](https://github.com/dodz2/utiq-blocker/releases/latest)
+2. Ouvrez Firefox
+3. Dans la barre d'adresse, tapez `about:debugging#/runtime/this-firefox`
+4. Glissez-déposez le fichier `.zip` dans la page
 5. L'extension est immédiatement fonctionnelle
 
 > **Note** : Les extensions chargées en mode temporaire sont supprimées au redémarrage de Firefox.
