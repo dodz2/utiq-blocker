@@ -2,7 +2,7 @@
 
 Une extension Firefox simple et efficace qui bloque le tracking Utiq (ce système de suivi imposé par certains opérateurs télécoms européens).
 
-## 🤔 Qu'est-ce qu'Utiq et pourquoi le bloquer ?
+## Qu'est-ce qu'Utiq et pourquoi le bloquer ?
 
 Vous avez peut-être remarqué ces bandeaux de consentement qui reviennent sans cesse, ou vous êtes simplement soucieux de votre vie privée. Utiq est un système de tracking publicitaire soutenu par de grands opérateurs télécoms (Orange, Vodafone, Deutsche Telekom, etc.). Contrairement aux cookies classiques, il utilise votre connexion réseau pour vous identifier à votre insu.
 
@@ -59,4 +59,4 @@ Les idées et rapports de bugs sont les bienvenus ! Si vous connaissez un nouvea
 
 ---
 
-*Développé avec ❤️ pour une vie privée numérique respectée.*
+*Développé pour une vie privée numérique respectée.*
