@@ -40,6 +40,7 @@ var CLES_STOCKAGE_UTIQ = [
 // --- Compteur de blocages DOM pour cet onglet ---
 var compteurBlocagesTab = 0;
 var observateurActif = false;
+var observateurInstance = null;
 var intercepteurDejaInjecte = false;
 var protectionActive = true;
 var hostnameActuel = window.location.hostname;
@@ -349,6 +350,9 @@ function demarrerSurveillanceDOM() {
     childList: true,
     subtree: true
   });
+
+  // Stocke l'instance pour pouvoir l'arrêter plus tard
+  observateurInstance = observateur;
 }
 
 // ===============================================================
@@ -544,6 +548,12 @@ async function initialiserUtiqBlocker() {
         rapporterBlocages();
       } else {
         console.debug("[Utiq Blocker] Protection désactivée via toggle/whitelist");
+        // Arrête l'observateur DOM pour éviter les fuites de ressources
+        if (observateurInstance) {
+          observateurInstance.disconnect();
+          observateurInstance = null;
+          observateurActif = false;
+        }
       }
     });
   });
