@@ -39,9 +39,15 @@ toggleCheckbox.addEventListener("change", async function () {
   });
 
   if (response && response.enabled !== undefined) {
-    actualiserInterface({ enabled: response.enabled });
+    toggleCheckbox.checked = response.enabled;
+    if (response.enabled) {
+      statusText.textContent = "Protection active — Utiq est bloqué.";
+      statusText.style.color = "#4CAF50";
+    } else {
+      statusText.textContent = "Protection désactivée — vigilance.";
+      statusText.style.color = "#FF5722";
+    }
   } else {
-    // En cas d'échec, revert le toggle à son état précédent
     toggleCheckbox.checked = !toggleCheckbox.checked;
   }
 });

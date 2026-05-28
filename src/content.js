@@ -40,6 +40,7 @@ var CLES_STOCKAGE_UTIQ = [
 // --- Compteur de blocages DOM pour cet onglet ---
 var compteurBlocagesTab = 0;
 var observateurActif = false;
+var intercepteurDejaInjecte = false;
 
 // ===============================================================
 // FONCTIONS DE DÉTECTION
@@ -319,6 +320,9 @@ function injecterScriptFlag(actif) {
  * permettant au content script de contrôler l'activation.
  */
 function injecterScriptIntercepteurPage() {
+  // Évite d'injecter le patch plusieurs fois (empilement inutile)
+  if (intercepteurDejaInjecte) return;
+  intercepteurDejaInjecte = true;
   var codeInjection = "(" + function () {
     var CLES_UTIQ = [
       "utiq_consent", "utiq_consentpass", "utiq_id", "utiq_session",
