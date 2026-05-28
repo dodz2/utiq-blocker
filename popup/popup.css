@@ -226,6 +226,32 @@ body {
   color: #ff7961;
 }
 
+/* --- Section Domaines Personnalisés --- */
+.custom-domain-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.custom-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  background-color: #1a1a2e;
+  color: #e0e0e0;
+  font-size: 12px;
+}
+
+.custom-input::placeholder {
+  color: #757575;
+}
+
+.custom-input:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
 /* --- Section Statistiques --- */
 .stats-section {
   display: flex;

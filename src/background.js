@@ -9,6 +9,8 @@ var STORAGE_KEY_ENABLED = "utiqBlocker_enabled";
 var STORAGE_KEY_BLOCK_COUNT = "utiqBlocker_blockCount";
 var STORAGE_KEY_GLOBAL_COUNT = "utiqBlocker_globalCount";
 var STORAGE_KEY_WHITELIST = "utiqBlocker_whitelist";
+var STORAGE_KEY_CUSTOM_DOMAINS = "utiqBlocker_customDomains";
+var DYNAMIC_RULE_ID_START = 1000;
 
 // --- Détection de la disponibilité de l'API updateEnabledRulesets ---
 // Cette API n'existe qu'à partir de Firefox 114. Sur Firefox 113 et Android,
@@ -22,7 +24,8 @@ var UPDATE_RULESETS_DISPONIBLE =
 browser.runtime.onInstalled.addListener(async function () {
   var stored = await browser.storage.local.get([
     STORAGE_KEY_ENABLED,
-    STORAGE_KEY_GLOBAL_COUNT
+    STORAGE_KEY_GLOBAL_COUNT,
+    STORAGE_KEY_CUSTOM_DOMAINS
   ]);
 
   var defaults = {};
@@ -31,6 +34,9 @@ browser.runtime.onInstalled.addListener(async function () {
   }
   if (stored[STORAGE_KEY_GLOBAL_COUNT] === undefined) {
     defaults[STORAGE_KEY_GLOBAL_COUNT] = 0;
+  }
+  if (stored[STORAGE_KEY_CUSTOM_DOMAINS] === undefined) {
+    defaults[STORAGE_KEY_CUSTOM_DOMAINS] = [];
   }
 
   if (Object.keys(defaults).length > 0) {
@@ -41,6 +47,8 @@ browser.runtime.onInstalled.addListener(async function () {
     ? stored[STORAGE_KEY_ENABLED]
     : true;
   await mettreAJourIcone(estActive, false);
+  // Met à jour les règles dynamiques au cas où
+  await mettreAJourReglesDynamiques();
 });
 
 // --- Change l'icône de la barre d'outils selon l'état ---
@@ -91,6 +99,64 @@ async function basculerReglesDNR(activer) {
     }
   } catch (e) {
     // Ignore silencieusement (Firefox Android ou version trop ancienne)
+  }
+}
+
+/**
+ * Vérifie si l'API DNR dynamique est disponible.
+ */
+function isDynamicDNRDisponible() {
+  return typeof browser.declarativeNetRequest !== "undefined" &&
+         typeof browser.declarativeNetRequest.updateDynamicRules === "function";
+}
+
+/**
+ * Récupère la liste des domaines personnalisés depuis le stockage.
+ */
+async function getCustomDomains() {
+  var stored = await browser.storage.local.get(STORAGE_KEY_CUSTOM_DOMAINS);
+  return stored[STORAGE_KEY_CUSTOM_DOMAINS] || [];
+}
+
+/**
+ * Met à jour les règles DNR dynamiques en fonction des domaines personnalisés.
+ */
+async function mettreAJourReglesDynamiques() {
+  if (!isDynamicDNRDisponible()) return;
+
+  try {
+    var customDomains = await getCustomDomains();
+    var existingRules = await browser.declarativeNetRequest.getDynamicRules();
+    var existingIds = existingRules.map(function(rule) { return rule.id; });
+
+    // Supprime toutes les règles dynamiques existantes de notre extension
+    if (existingIds.length > 0) {
+      await browser.declarativeNetRequest.updateDynamicRules({
+        removeRuleIds: existingIds
+      });
+    }
+
+    // Ajoute les nouvelles règles pour chaque domaine personnalisé
+    if (customDomains.length > 0) {
+      var newRules = [];
+      for (var i = 0; i < customDomains.length; i++) {
+        newRules.push({
+          id: DYNAMIC_RULE_ID_START + i,
+          priority: 1,
+          action: { type: "block" },
+          condition: {
+            urlFilter: "||" + customDomains[i] + "/",
+            resourceTypes: ["main_frame", "sub_frame", "script", "image", "xmlhttprequest", "ping", "stylesheet", "font", "object", "media", "websocket", "webtransport", "webbundle", "other"]
+          }
+        });
+      }
+
+      await browser.declarativeNetRequest.updateDynamicRules({
+        addRules: newRules
+      });
+    }
+  } catch (e) {
+    console.error("[Utiq Blocker] Erreur mise à jour règles dynamiques:", e);
   }
 }
 
@@ -173,6 +239,45 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
       return { success: true, whitelist: newWhitelist };
     }
 
+    case "getCustomDomains": {
+      var customDomains = await getCustomDomains();
+      return { success: true, domains: customDomains };
+    }
+
+    case "addCustomDomain": {
+      var domain = message.domain;
+      if (!domain) return { error: "Domaine manquant" };
+
+      var customDomains = await getCustomDomains();
+
+      if (customDomains.indexOf(domain) === -1) {
+        customDomains.push(domain);
+        await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_DOMAINS]: customDomains });
+        await mettreAJourReglesDynamiques();
+      }
+
+      return { success: true, domains: customDomains };
+    }
+
+    case "removeCustomDomain": {
+      var domain = message.domain;
+      if (!domain) return { error: "Domaine manquant" };
+
+      var customDomains = await getCustomDomains();
+      var newDomains = [];
+
+      for (var j = 0; j < customDomains.length; j++) {
+        if (customDomains[j] !== domain) {
+          newDomains.push(customDomains[j]);
+        }
+      }
+
+      await browser.storage.local.set({ [STORAGE_KEY_CUSTOM_DOMAINS]: newDomains });
+      await mettreAJourReglesDynamiques();
+
+      return { success: true, domains: newDomains };
+    }
+
     case "reportBlock": {
       var newCount = message.count;
       var tabId = sender.tab ? sender.tab.id : message.tabId;
@@ -227,4 +332,7 @@ browser.tabs.onRemoved.addListener(async function (tabId) {
   if (!estActive) {
     await basculerReglesDNR(false);
   }
+
+  // Initialise les règles dynamiques pour les domaines personnalisés
+  await mettreAJourReglesDynamiques();
 })();

@@ -13,11 +13,16 @@ var currentHostnameEl = document.getElementById("currentHostname");
 var toggleWhitelistBtn = document.getElementById("toggleWhitelistBtn");
 var whitelistListEl = document.getElementById("whitelistList");
 var whitelistEmptyEl = document.getElementById("whitelistEmpty");
+var customDomainInput = document.getElementById("customDomainInput");
+var addCustomDomainBtn = document.getElementById("addCustomDomainBtn");
+var customDomainsListEl = document.getElementById("customDomainsList");
+var customDomainsEmptyEl = document.getElementById("customDomainsEmpty");
 
 var currentTab = null;
 var currentHostname = "";
 var isWhitelisted = false;
 var whitelist = [];
+var customDomains = [];
 
 // Au chargement de la popup, récupération de l'état depuis le background
 document.addEventListener("DOMContentLoaded", async function () {
@@ -43,6 +48,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
   if (response) {
     actualiserInterface(response);
+    chargerDomainesPersonnalisés();
   }
 });
 
@@ -86,6 +92,30 @@ toggleWhitelistBtn.addEventListener("click", async function () {
     isWhitelisted = !isWhitelisted;
     actualiserBoutonWhitelist();
     afficherListeBlanche();
+  }
+});
+
+// Écouteur pour ajouter un domaine personnalisé
+addCustomDomainBtn.addEventListener("click", async function () {
+  var domain = customDomainInput.value.trim();
+  if (!domain) return;
+
+  var response = await browser.runtime.sendMessage({
+    action: "addCustomDomain",
+    domain: domain
+  });
+
+  if (response && response.domains) {
+    customDomains = response.domains;
+    customDomainInput.value = "";
+    afficherDomainesPersonnalisés();
+  }
+});
+
+// Permettre l'ajout avec la touche Entrée
+customDomainInput.addEventListener("keypress", function (e) {
+  if (e.key === "Enter") {
+    addCustomDomainBtn.click();
   }
 });
 
@@ -180,5 +210,57 @@ function afficherListeBlanche() {
     item.appendChild(span);
     item.appendChild(btn);
     whitelistListEl.appendChild(item);
+  }
+}
+
+async function chargerDomainesPersonnalisés() {
+  var response = await browser.runtime.sendMessage({
+    action: "getCustomDomains"
+  });
+  if (response && response.domains) {
+    customDomains = response.domains;
+    afficherDomainesPersonnalisés();
+  }
+}
+
+function afficherDomainesPersonnalisés() {
+  customDomainsListEl.innerHTML = "";
+
+  if (customDomains.length === 0) {
+    customDomainsListEl.appendChild(customDomainsEmptyEl);
+    customDomainsEmptyEl.style.display = "block";
+    return;
+  }
+
+  customDomainsEmptyEl.style.display = "none";
+
+  for (var i = 0; i < customDomains.length; i++) {
+    var item = document.createElement("div");
+    item.className = "whitelist-item";
+
+    var span = document.createElement("span");
+    span.className = "whitelist-item-host";
+    span.textContent = customDomains[i];
+
+    var btn = document.createElement("button");
+    btn.className = "whitelist-remove-btn";
+    btn.textContent = "×";
+    btn.dataset.domain = customDomains[i];
+
+    btn.addEventListener("click", async function () {
+      var domain = this.dataset.domain;
+      var response = await browser.runtime.sendMessage({
+        action: "removeCustomDomain",
+        domain: domain
+      });
+      if (response && response.domains) {
+        customDomains = response.domains;
+        afficherDomainesPersonnalisés();
+      }
+    });
+
+    item.appendChild(span);
+    item.appendChild(btn);
+    customDomainsListEl.appendChild(item);
   }
 }
