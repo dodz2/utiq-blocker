@@ -8,6 +8,7 @@
 var STORAGE_KEY_ENABLED = "utiqBlocker_enabled";
 var STORAGE_KEY_BLOCK_COUNT = "utiqBlocker_blockCount";
 var STORAGE_KEY_GLOBAL_COUNT = "utiqBlocker_globalCount";
+var STORAGE_KEY_WHITELIST = "utiqBlocker_whitelist";
 
 // --- Détection de la disponibilité de l'API updateEnabledRulesets ---
 // Cette API n'existe qu'à partir de Firefox 114. Sur Firefox 113 et Android,
@@ -100,23 +101,31 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     case "getStatus": {
       var stored = await browser.storage.local.get([
         STORAGE_KEY_ENABLED,
-        STORAGE_KEY_GLOBAL_COUNT
+        STORAGE_KEY_GLOBAL_COUNT,
+        STORAGE_KEY_WHITELIST
       ]);
 
       var tabBlockCount = 0;
-      if (message.tabId) {
+      var tabId = message.tabId;
+      if (tabId) {
         try {
           var tabData = await browser.storage.local.get(
-            STORAGE_KEY_BLOCK_COUNT + "_" + message.tabId
+            STORAGE_KEY_BLOCK_COUNT + "_" + tabId
           );
-          tabBlockCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + message.tabId] || 0;
+          tabBlockCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
         } catch (e) {}
       }
+
+      var hostname = message.hostname || "";
+      var whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+      var isWhitelisted = whitelist.indexOf(hostname) !== -1;
 
       return {
         enabled: stored[STORAGE_KEY_ENABLED] !== false,
         globalCount: stored[STORAGE_KEY_GLOBAL_COUNT] || 0,
-        tabBlockCount: tabBlockCount
+        tabBlockCount: tabBlockCount,
+        whitelist: whitelist,
+        isWhitelisted: isWhitelisted
       };
     }
 
@@ -128,6 +137,40 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
       await basculerReglesDNR(nouvelEtat);
       await mettreAJourIcone(nouvelEtat, false);
       return { enabled: nouvelEtat };
+    }
+
+    case "addToWhitelist": {
+      var hostname = message.hostname;
+      if (!hostname) return { error: "Hostname manquant" };
+
+      var stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
+      var whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+
+      if (whitelist.indexOf(hostname) === -1) {
+        whitelist.push(hostname);
+        await browser.storage.local.set({ [STORAGE_KEY_WHITELIST]: whitelist });
+      }
+
+      return { success: true, whitelist: whitelist };
+    }
+
+    case "removeFromWhitelist": {
+      var hostname = message.hostname;
+      if (!hostname) return { error: "Hostname manquant" };
+
+      var stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
+      var whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+      var newWhitelist = [];
+
+      for (var i = 0; i < whitelist.length; i++) {
+        if (whitelist[i] !== hostname) {
+          newWhitelist.push(whitelist[i]);
+        }
+      }
+
+      await browser.storage.local.set({ [STORAGE_KEY_WHITELIST]: newWhitelist });
+
+      return { success: true, whitelist: newWhitelist };
     }
 
     case "reportBlock": {

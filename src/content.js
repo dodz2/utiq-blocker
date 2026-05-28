@@ -41,6 +41,8 @@ var CLES_STOCKAGE_UTIQ = [
 var compteurBlocagesTab = 0;
 var observateurActif = false;
 var intercepteurDejaInjecte = false;
+var protectionActive = true;
+var hostnameActuel = window.location.hostname;
 
 // ===============================================================
 // FONCTIONS DE DÉTECTION
@@ -404,64 +406,86 @@ function rapporterBlocages() {
   }
 }
 
+/**
+ * Vérifie si le domaine actuel est dans la whitelist.
+ * Met à jour la variable protectionActive en conséquence.
+ */
+async function verifierWhitelist() {
+  try {
+    var response = await browser.runtime.sendMessage({
+      action: "getStatus",
+      tabId: null,
+      hostname: hostnameActuel
+    });
+    if (response && response.isWhitelisted) {
+      protectionActive = false;
+    } else {
+      protectionActive = response ? response.enabled !== false : true;
+    }
+  } catch (e) {
+    protectionActive = true;
+  }
+}
+
 // ===============================================================
 // INITIALISATION PRINCIPALE
 // ===============================================================
 
 /**
- * Point d'entrée : vérifie l'état du toggle puis exécute la
- * neutralisation uniquement si la protection est activée.
+ * Point d'entrée : vérifie l'état du toggle et la whitelist
+ * puis exécute la neutralisation uniquement si la protection
+ * est activée et que le domaine n'est pas en whitelist.
  * Écoute aussi les changements de préférences pour réagir
  * au toggle en temps réel (même sans updateEnabledRulesets).
  */
-function initialiserUtiqBlocker() {
-  // Vérifie d'abord si la protection est activée
-  browser.storage.local.get("utiqBlocker_enabled").then(function (stored) {
-    var estActive = stored.utiqBlocker_enabled !== false;
+async function initialiserUtiqBlocker() {
+  // Vérifie d'abord si la protection est activée et la whitelist
+  await verifierWhitelist();
 
-    if (estActive) {
-      nettoyerElementsUtiq();
-      nettoyerCookiesUtiq();
-      nettoyerStockageLocalUtiq();
-      injecterScriptIntercepteurPage();
-      demarrerSurveillanceDOM();
-      rapporterBlocages();
-      console.debug(
-        "[Utiq Blocker] Protection initialisée sur " +
-        window.location.hostname +
-        " (" + compteurBlocagesTab + " blocages initiaux)"
-      );
-    } else {
-      // Injecte le flag false pour que le script intercepteur
-      // (s'il a déjà été injecté sur un rechargement) laisse passer
-      injecterScriptFlag(false);
-      console.debug(
-        "[Utiq Blocker] Protection désactivée sur " +
-        window.location.hostname
-      );
-    }
-  });
+  if (protectionActive) {
+    nettoyerElementsUtiq();
+    nettoyerCookiesUtiq();
+    nettoyerStockageLocalUtiq();
+    injecterScriptIntercepteurPage();
+    demarrerSurveillanceDOM();
+    rapporterBlocages();
+    console.debug(
+      "[Utiq Blocker] Protection initialisée sur " +
+      window.location.hostname +
+      " (" + compteurBlocagesTab + " blocages initiaux)"
+    );
+  } else {
+    // Injecte le flag false pour que le script intercepteur
+    // (s'il a déjà été injecté sur un rechargement) laisse passer
+    injecterScriptFlag(false);
+    console.debug(
+      "[Utiq Blocker] Protection désactivée sur " +
+      window.location.hostname +
+      " (whitelist ou toggle)"
+    );
+  }
 
-  // Écoute les changements de préférences (toggle popup)
+  // Écoute les changements de préférences (toggle popup ou whitelist)
   browser.storage.onChanged.addListener(function (changes, area) {
     if (area !== "local") return;
-    if (!changes.utiqBlocker_enabled) return;
+    if (!changes.utiqBlocker_enabled && !changes.utiqBlocker_whitelist) return;
 
-    var nouvelEtat = changes.utiqBlocker_enabled.newValue !== false;
-    // Met à jour le flag dans le contexte de la page
-    injecterScriptFlag(nouvelEtat);
+    // Revérifie l'état et la whitelist
+    verifierWhitelist().then(function() {
+      injecterScriptFlag(protectionActive);
 
-    if (nouvelEtat) {
-      console.debug("[Utiq Blocker] Protection réactivée via toggle");
-      nettoyerElementsUtiq();
-      nettoyerCookiesUtiq();
-      nettoyerStockageLocalUtiq();
-      injecterScriptIntercepteurPage();
-      demarrerSurveillanceDOM();
-      rapporterBlocages();
-    } else {
-      console.debug("[Utiq Blocker] Protection désactivée via toggle");
-    }
+      if (protectionActive) {
+        console.debug("[Utiq Blocker] Protection réactivée via toggle/whitelist");
+        nettoyerElementsUtiq();
+        nettoyerCookiesUtiq();
+        nettoyerStockageLocalUtiq();
+        injecterScriptIntercepteurPage();
+        demarrerSurveillanceDOM();
+        rapporterBlocages();
+      } else {
+        console.debug("[Utiq Blocker] Protection désactivée via toggle/whitelist");
+      }
+    });
   });
 }
 
