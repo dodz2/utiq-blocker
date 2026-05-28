@@ -174,21 +174,30 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "reportBlock": {
-      var count = message.count;
+      var newCount = message.count;
       var tabId = sender.tab ? sender.tab.id : message.tabId;
 
+      var previousTabCount = 0;
       if (tabId) {
+        var tabData = await browser.storage.local.get(
+          STORAGE_KEY_BLOCK_COUNT + "_" + tabId
+        );
+        previousTabCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
+
         await browser.storage.local.set({
-          [STORAGE_KEY_BLOCK_COUNT + "_" + tabId]: count
+          [STORAGE_KEY_BLOCK_COUNT + "_" + tabId]: newCount
         });
       }
 
-      var storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
-      var nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + 1;
-      await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
+      var diff = newCount - previousTabCount;
+      if (diff > 0) {
+        var storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
+        var nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
+        await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
+      }
 
       var etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
-      if (etat[STORAGE_KEY_ENABLED] !== false && count > 0) {
+      if (etat[STORAGE_KEY_ENABLED] !== false && newCount > 0) {
         await mettreAJourIcone(true, true);
       }
 
