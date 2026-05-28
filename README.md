@@ -113,7 +113,7 @@ Pour distribuer l'extension publiquement :
 
 ## Prérequis techniques
 
-- Firefox 114 ou version ultérieure
+- Firefox 113 ou version ultérieure
 - Manifest V3 (pas de compatibilité avec les navigateurs ne supportant que Manifest V2)
 
 ## Technologies utilisées

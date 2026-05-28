@@ -294,13 +294,32 @@ function demarrerSurveillanceDOM() {
 // ===============================================================
 
 /**
+ * Injecte un script dans le contexte de la page pour définir
+ * le flag __utiqBlocker_enabled que le script intercepteur lira.
+ * @param {boolean} actif - True si la protection est active.
+ */
+function injecterScriptFlag(actif) {
+  var code = "window.__utiqBlocker_enabled = " + (actif ? "true" : "false") + ";";
+  var el = document.createElement("script");
+  el.textContent = code;
+  el.async = false;
+  if (document.documentElement) {
+    try {
+      document.documentElement.appendChild(el);
+      el.parentNode.removeChild(el);
+    } catch (e) {}
+  }
+}
+
+/**
  * Injecte un script dans le contexte de la page web (pas dans
  * le contexte isolé du content script) pour intercepter
  * localStorage.setItem et document.cookie.
+ * Le script vérifie window.__utiqBlocker_enabled avant de bloquer,
+ * permettant au content script de contrôler l'activation.
  */
 function injecterScriptIntercepteurPage() {
   var codeInjection = "(" + function () {
-    // Liste des motifs Utiq à bloquer (dupliquée dans le contexte page)
     var CLES_UTIQ = [
       "utiq_consent", "utiq_consentpass", "utiq_id", "utiq_session",
       "utiq_user", "utiq_token", "utiq_auth", "utiq_tracking",
@@ -317,28 +336,30 @@ function injecterScriptIntercepteurPage() {
       return false;
     }
 
-    // Interception de localStorage.setItem
+    function estBlocageActif() {
+      return window.__utiqBlocker_enabled !== false;
+    }
+
     try {
       var setItemOriginal = Storage.prototype.setItem;
       Storage.prototype.setItem = function (cle, valeur) {
-        if (estMotifUtiq(cle)) {
-          console.debug("[Utiq Blocker] Tentative localStorage.setItem bloquée :", cle);
-          return; // Bloque silencieusement l'écriture
+        if (estBlocageActif() && estMotifUtiq(cle)) {
+          console.debug("[Utiq Blocker] localStorage.setItem bloqué :", cle);
+          return;
         }
         return setItemOriginal.call(this, cle, valeur);
       };
     } catch (e) {}
 
-    // Interception de document.cookie (setter)
     try {
       var descCookie = Object.getOwnPropertyDescriptor(Document.prototype, "cookie");
       if (descCookie && descCookie.set) {
         Object.defineProperty(Document.prototype, "cookie", {
           get: descCookie.get,
           set: function (valeur) {
-            if (estMotifUtiq(valeur)) {
-              console.debug("[Utiq Blocker] Tentative document.cookie bloquée :", valeur);
-              return; // Bloque silencieusement l'écriture du cookie
+            if (estBlocageActif() && estMotifUtiq(valeur)) {
+              console.debug("[Utiq Blocker] document.cookie bloqué :", valeur);
+              return;
             }
             descCookie.set.call(this, valeur);
           },
@@ -348,24 +369,15 @@ function injecterScriptIntercepteurPage() {
     } catch (e) {}
   }.toString() + ")();";
 
-  // Crée un élément script et l'injecte dans le document
   var script = document.createElement("script");
   script.textContent = codeInjection;
   script.async = false;
 
-  // Injection dans le head si disponible, sinon dans le documentElement
-  var cible = document.head || document.documentElement;
-
-  // Si le document n'a pas encore de head (document_start),
-  // on attend que le documentElement soit disponible
   if (document.documentElement) {
     try {
       document.documentElement.appendChild(script);
-      // Nettoie le script après injection pour ne pas laisser de trace
       script.parentNode.removeChild(script);
-    } catch (e) {
-      // Peut échouer si le document n'est pas encore prêt
-    }
+    } catch (e) {}
   }
 }
 
@@ -393,28 +405,60 @@ function rapporterBlocages() {
 // ===============================================================
 
 /**
- * Point d'entrée : exécute toutes les opérations de neutralisation.
+ * Point d'entrée : vérifie l'état du toggle puis exécute la
+ * neutralisation uniquement si la protection est activée.
+ * Écoute aussi les changements de préférences pour réagir
+ * au toggle en temps réel (même sans updateEnabledRulesets).
  */
 function initialiserUtiqBlocker() {
-  // Phase 1 : Nettoyage immédiat des éléments déjà présents
-  nettoyerElementsUtiq();
-  nettoyerCookiesUtiq();
-  nettoyerStockageLocalUtiq();
+  // Vérifie d'abord si la protection est activée
+  browser.storage.local.get("utiqBlocker_enabled").then(function (stored) {
+    var estActive = stored.utiqBlocker_enabled !== false;
 
-  // Phase 2 : Injection du script intercepteur dans le contexte page
-  injecterScriptIntercepteurPage();
+    if (estActive) {
+      nettoyerElementsUtiq();
+      nettoyerCookiesUtiq();
+      nettoyerStockageLocalUtiq();
+      injecterScriptIntercepteurPage();
+      demarrerSurveillanceDOM();
+      rapporterBlocages();
+      console.debug(
+        "[Utiq Blocker] Protection initialisée sur " +
+        window.location.hostname +
+        " (" + compteurBlocagesTab + " blocages initiaux)"
+      );
+    } else {
+      // Injecte le flag false pour que le script intercepteur
+      // (s'il a déjà été injecté sur un rechargement) laisse passer
+      injecterScriptFlag(false);
+      console.debug(
+        "[Utiq Blocker] Protection désactivée sur " +
+        window.location.hostname
+      );
+    }
+  });
 
-  // Phase 3 : Démarrage de la surveillance continue
-  demarrerSurveillanceDOM();
+  // Écoute les changements de préférences (toggle popup)
+  browser.storage.onChanged.addListener(function (changes, area) {
+    if (area !== "local") return;
+    if (!changes.utiqBlocker_enabled) return;
 
-  // Phase 4 : Rapport initial au background
-  rapporterBlocages();
+    var nouvelEtat = changes.utiqBlocker_enabled.newValue !== false;
+    // Met à jour le flag dans le contexte de la page
+    injecterScriptFlag(nouvelEtat);
 
-  console.debug(
-    "[Utiq Blocker] Protection initialisée sur " +
-    window.location.hostname +
-    " (" + compteurBlocagesTab + " blocages initiaux)"
-  );
+    if (nouvelEtat) {
+      console.debug("[Utiq Blocker] Protection réactivée via toggle");
+      nettoyerElementsUtiq();
+      nettoyerCookiesUtiq();
+      nettoyerStockageLocalUtiq();
+      injecterScriptIntercepteurPage();
+      demarrerSurveillanceDOM();
+      rapporterBlocages();
+    } else {
+      console.debug("[Utiq Blocker] Protection désactivée via toggle");
+    }
+  });
 }
 
 // Démarrage automatique (run_at: document_start dans le manifest)
