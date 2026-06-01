@@ -39,8 +39,13 @@ document.addEventListener("DOMContentLoaded", async function () {
   }
 
   currentTab = tabs[0];
-  currentHostname = new URL(currentTab.url).hostname;
-  currentHostnameEl.textContent = currentHostname;
+  try {
+    currentHostname = new URL(currentTab.url).hostname;
+  } catch (_e) {
+    // URL undefined (page about:, tab en chargement)
+    currentHostname = "";
+  }
+  currentHostnameEl.textContent = currentHostname || "(page non disponible)";
 
   const response = await browser.runtime.sendMessage({
     action: "getStatus",

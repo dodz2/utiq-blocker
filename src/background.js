@@ -273,10 +273,14 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
       const tabId = message.tabId;
       if (tabId) {
         try {
-          const tabData = await browser.storage.local.get(
-            STORAGE_KEY_BLOCK_COUNT + "_" + tabId
-          );
-          tabBlockCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
+          // Somme des compteurs de TOUTES les frames de l'onglet
+          const allData = await browser.storage.local.get(null);
+          const tabPrefix = STORAGE_KEY_BLOCK_COUNT + "_" + tabId + "_";
+          for (const key in allData) {
+            if (key.indexOf(tabPrefix) === 0) {
+              tabBlockCount += allData[key] || 0;
+            }
+          }
         } catch (_e) { /* tab data non disponible */ }
       }
 
@@ -380,35 +384,54 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
 
     case "reportBlock": {
       const newCount = message.count;
-      const tabId = sender.tab ? sender.tab.id : message.tabId;
+      const frameId = sender.frameId !== undefined ? sender.frameId : 0;
 
-      let previousTabCount = 0;
-      if (tabId) {
-        const tabData = await browser.storage.local.get(
-          STORAGE_KEY_BLOCK_COUNT + "_" + tabId
-        );
-        previousTabCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
+      // Clé de stockage par frame : évite l'écrasement multi-iframes
+      const frameKey = sender.tab
+        ? STORAGE_KEY_BLOCK_COUNT + "_" + sender.tab.id + "_" + frameId
+        : null;
 
-        await browser.storage.local.set({
-          [STORAGE_KEY_BLOCK_COUNT + "_" + tabId]: newCount
-        });
+      if (frameKey) {
+        // Lit l'ancien compteur de cette frame
+        const frameData = await browser.storage.local.get(frameKey);
+        const previousFrameCount = frameData[frameKey] || 0;
+
+        // Écrase le compteur de cette frame (pas du tab)
+        await browser.storage.local.set({ [frameKey]: newCount });
+
+        // Calcule la somme de TOUTES les frames du tab
+        const allData = await browser.storage.local.get(null);
+        const tabPrefix = STORAGE_KEY_BLOCK_COUNT + "_" + sender.tab.id + "_";
+        let totalTabCount = 0;
+        for (const key in allData) {
+          if (key.indexOf(tabPrefix) === 0) {
+            totalTabCount += allData[key] || 0;
+          }
+        }
+
+        // Met à jour le global avec le diff (nouveau total - ancien total du tab)
+        const oldTabTotal = totalTabCount - newCount + previousFrameCount;
+        const diff = totalTabCount - oldTabTotal;
+        if (diff > 0) {
+          const storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
+          const nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
+          await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
+        }
+
+        const etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
+        if (etat[STORAGE_KEY_ENABLED] !== false && newCount > 0) {
+          await mettreAJourIcone(true, true);
+        }
+
+        // Enregistre dans l'historique (Bug #2 : try/catch pour URL)
+        let domain = "unknown";
+        try {
+          if (sender.tab && sender.tab.url) {
+            domain = new URL(sender.tab.url).hostname;
+          }
+        } catch (_e) { /* URL invalide ou non disponible */ }
+        await enregistrerHistorique(domain, totalTabCount);
       }
-
-      const diff = newCount - previousTabCount;
-      if (diff > 0) {
-        const storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
-        const nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
-        await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
-      }
-
-      const etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
-      if (etat[STORAGE_KEY_ENABLED] !== false && newCount > 0) {
-        await mettreAJourIcone(true, true);
-      }
-
-      // Enregistre dans l'historique
-      const domain = sender.tab ? new URL(sender.tab.url).hostname : "unknown";
-      await enregistrerHistorique(domain, newCount);
 
       return { success: true };
     }
@@ -430,7 +453,18 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
 });
 
 browser.tabs.onRemoved.addListener(async function (tabId) {
-  await browser.storage.local.remove(STORAGE_KEY_BLOCK_COUNT + "_" + tabId);
+  // Supprime les compteurs de TOUTES les frames de cet onglet
+  const allData = await browser.storage.local.get(null);
+  const tabPrefix = STORAGE_KEY_BLOCK_COUNT + "_" + tabId + "_";
+  const keysToRemove = [];
+  for (const key in allData) {
+    if (key.indexOf(tabPrefix) === 0) {
+      keysToRemove.push(key);
+    }
+  }
+  if (keysToRemove.length > 0) {
+    await browser.storage.local.remove(keysToRemove);
+  }
 });
 
 (async function init() {
