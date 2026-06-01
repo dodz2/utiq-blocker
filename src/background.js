@@ -14,6 +14,9 @@ const DYNAMIC_RULE_ID_START = 1000;
 const STORAGE_KEY_HISTORY = "utiqBlocker_history";
 const HISTORY_MAX_DAYS = 7;
 
+// Mutex par tab pour sérialiser les reportBlock concurrents (all_frames)
+const _tabMutexes = new Map();
+
 // --- Détection de la disponibilité de l'API updateEnabledRulesets ---
 // Cette API n'existe qu'à partir de Firefox 114. Sur Firefox 113 et Android,
 // on dégrade gracieusement : le blocage réseau DNR reste actif en permanence,
@@ -257,6 +260,56 @@ async function enregistrerHistorique(domain, count) {
   } catch (_e) { /* storage non disponible */ }
 }
 
+/**
+ * Logique de traitement d'un reportBlock (sérialisée par tab via mutex).
+ * Stocke le compteur par frame, calcule le total du tab, met à jour le global.
+ */
+async function traiterReportBlock(sender, message) {
+  const newCount = message.count;
+  const frameId = sender.frameId !== undefined ? sender.frameId : 0;
+  const frameKey = STORAGE_KEY_BLOCK_COUNT + "_" + sender.tab.id + "_" + frameId;
+
+  // Lit l'ancien compteur de cette frame
+  const frameData = await browser.storage.local.get(frameKey);
+  const previousFrameCount = frameData[frameKey] || 0;
+
+  // Écrase le compteur de cette frame (pas du tab)
+  await browser.storage.local.set({ [frameKey]: newCount });
+
+  // Calcule la somme de TOUTES les frames du tab
+  const allData = await browser.storage.local.get(null);
+  const tabPrefix = STORAGE_KEY_BLOCK_COUNT + "_" + sender.tab.id + "_";
+  let totalTabCount = 0;
+  for (const key in allData) {
+    if (key.indexOf(tabPrefix) === 0) {
+      totalTabCount += allData[key] || 0;
+    }
+  }
+
+  // Met à jour le global avec le diff
+  const oldTabTotal = totalTabCount - newCount + previousFrameCount;
+  const diff = totalTabCount - oldTabTotal;
+  if (diff > 0) {
+    const storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
+    const nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
+    await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
+  }
+
+  const etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
+  if (etat[STORAGE_KEY_ENABLED] !== false && newCount > 0) {
+    await mettreAJourIcone(true, true);
+  }
+
+  // Enregistre dans l'historique (try/catch pour URL non disponible)
+  let domain = "unknown";
+  try {
+    if (sender.tab && sender.tab.url) {
+      domain = new URL(sender.tab.url).hostname;
+    }
+  } catch (_e) { /* URL invalide ou non disponible */ }
+  await enregistrerHistorique(domain, totalTabCount);
+}
+
 // --- Gestion des messages entrants (popup et content scripts) ---
 browser.runtime.onMessage.addListener(async function (message, sender) {
   switch (message.action) {
@@ -382,56 +435,14 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "reportBlock": {
-      const newCount = message.count;
-      const frameId = sender.frameId !== undefined ? sender.frameId : 0;
+      const tabId = sender.tab ? sender.tab.id : null;
+      if (!tabId) return { success: true };
 
-      // Clé de stockage par frame : évite l'écrasement multi-iframes
-      const frameKey = sender.tab
-        ? STORAGE_KEY_BLOCK_COUNT + "_" + sender.tab.id + "_" + frameId
-        : null;
-
-      if (frameKey) {
-        // Lit l'ancien compteur de cette frame
-        const frameData = await browser.storage.local.get(frameKey);
-        const previousFrameCount = frameData[frameKey] || 0;
-
-        // Écrase le compteur de cette frame (pas du tab)
-        await browser.storage.local.set({ [frameKey]: newCount });
-
-        // Calcule la somme de TOUTES les frames du tab
-        const allData = await browser.storage.local.get(null);
-        const tabPrefix = STORAGE_KEY_BLOCK_COUNT + "_" + sender.tab.id + "_";
-        let totalTabCount = 0;
-        for (const key in allData) {
-          if (key.indexOf(tabPrefix) === 0) {
-            totalTabCount += allData[key] || 0;
-          }
-        }
-
-        // Met à jour le global avec le diff (nouveau total - ancien total du tab)
-        const oldTabTotal = totalTabCount - newCount + previousFrameCount;
-        const diff = totalTabCount - oldTabTotal;
-        if (diff > 0) {
-          const storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
-          const nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
-          await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
-        }
-
-        const etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
-        if (etat[STORAGE_KEY_ENABLED] !== false && newCount > 0) {
-          await mettreAJourIcone(true, true);
-        }
-
-        // Enregistre dans l'historique (Bug #2 : try/catch pour URL)
-        let domain = "unknown";
-        try {
-          if (sender.tab && sender.tab.url) {
-            domain = new URL(sender.tab.url).hostname;
-          }
-        } catch (_e) { /* URL invalide ou non disponible */ }
-        await enregistrerHistorique(domain, totalTabCount);
-      }
-
+      // Sérialise les reportBlock concurrents du même onglet via un mutex
+      const prev = _tabMutexes.get(tabId) || Promise.resolve();
+      const current = prev.then(() => traiterReportBlock(sender, message));
+      _tabMutexes.set(tabId, current.catch(() => {}));
+      await current;
       return { success: true };
     }
 

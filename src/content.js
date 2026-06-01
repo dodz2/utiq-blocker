@@ -568,13 +568,18 @@ async function verifierWhitelist() {
  * au toggle en temps réel (même sans updateEnabledRulesets).
  */
 async function initialiserUtiqBlocker() {
-  // Vérifie d'abord si la protection est activée et la whitelist
+  // Nettoyage DOM IMMÉDIAT (synchrone) pour intercepter les scripts Utiq
+  // AVANT toute opération async qui pourrait céder l'exécution au parser HTML.
+  // Le whitelist check viendra après : si whitelised, le nettoyage était
+  // inutile mais inoffensif (mieux vaut trop nettoyer que pas assez).
+  nettoyerElementsUtiq();
+  nettoyerCookiesUtiq();
+  nettoyerStockageLocalUtiq();
+
+  // Vérifie si la protection est activée et la whitelist (async)
   await verifierWhitelist();
 
   if (protectionActive) {
-    nettoyerElementsUtiq();
-    nettoyerCookiesUtiq();
-    nettoyerStockageLocalUtiq();
     await injecterScriptIntercepteurPage();
     demarrerSurveillanceDOM();
     rapporterBlocages();

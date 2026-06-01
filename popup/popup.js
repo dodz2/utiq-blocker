@@ -19,6 +19,7 @@ const customDomainsListEl = document.getElementById("customDomainsList");
 const customDomainsEmptyEl = document.getElementById("customDomainsEmpty");
 const exportCSVBtn = document.getElementById("exportCSV");
 const exportJSONBtn = document.getElementById("exportJSON");
+const versionSpan = document.getElementById("versionSpan");
 
 let currentTab = null;
 let currentHostname = "";
@@ -28,6 +29,12 @@ let customDomains = [];
 
 // Au chargement de la popup, récupération de l'état depuis le background
 document.addEventListener("DOMContentLoaded", async function () {
+  // Lit la version depuis le manifest (pas de valeur hardcodée)
+  const manifest = browser.runtime.getManifest();
+  if (versionSpan && manifest && manifest.version) {
+    versionSpan.textContent = "v" + manifest.version;
+  }
+
   const tabs = await browser.tabs.query({
     active: true,
     currentWindow: true
