@@ -6,7 +6,7 @@
 // ============================================================
 
 // --- Liste des domaines et sous-domaines Utiq à détecter ---
-var DOMAINES_UTIQ = [
+const DOMAINES_UTIQ = [
   "utiq.com",
   "consenthub.utiq.com",
   "marti.utiq.com",
@@ -19,7 +19,7 @@ var DOMAINES_UTIQ = [
 ];
 
 // --- Clés de stockage et noms de cookies Utiq à neutraliser ---
-var CLES_STOCKAGE_UTIQ = [
+const CLES_STOCKAGE_UTIQ = [
   "utiq_consent",
   "utiq_consentpass",
   "utiq_id",
@@ -38,45 +38,52 @@ var CLES_STOCKAGE_UTIQ = [
 ];
 
 // --- Compteur de blocages DOM pour cet onglet ---
-var compteurBlocagesTab = 0;
-var observateurActif = false;
-var observateurInstance = null;
-var intercepteurDejaInjecte = false;
-var protectionActive = true;
-var hostnameActuel = window.location.hostname;
+let compteurBlocagesTab = 0;
+let observateurActif = false;
+let observateurInstance = null;
+let intercepteurDejaInjecte = false;
+let protectionActive = true;
+const hostnameActuel = window.location.hostname;
 
 // --- Patterns heuristiques pour détecter les scripts de tracking ---
-var PATTERNS_HEURISTIQUES = [
-  // Recherche de "utiq" (insensible à la casse)
+// Organisés en catégories pour réduire les faux positifs.
+// Un script est suspect s'il contient :
+//   - Au moins 1 pattern de la catégorie A (spécifique Utiq), OU
+//   - Au moins 1 pattern de A + aucun match A, mais 4+ patterns de B+C combinés, OU
+//   - Au moins 2 patterns de B ET au moins 1 de C (fingerprinting + exfiltration)
+
+// Catégorie A : Signatures directes ou quasi-directes d'Utiq
+const PATTERNS_UTIQ_DIRECTS = [
   /utiq/i,
-  // APIs de fingerprinting de périphérique
-  /navigator\.userAgentData/i,
-  /canvas\.toDataURL/i,
-  /getImageData/i,
-  /AudioContext/i,
-  /webkitAudioContext/i,
-  // APIs de télécom/opérateur
-  /navigator\.connection/i,
-  /effectiveType/i,
-  /rtt\b/i,
-  // Collection d'empreintes (fingerprinting)
-  /screen\.colorDepth/i,
-  /screen\.pixelDepth/i,
-  /navigator\.plugins/i,
-  /navigator\.language/i,
-  /Intl\.DateTimeFormat/i,
-  // Patterns de tracking réseau
-  /beacon/i,
-  /sendBeacon/i,
-  // Stockage local suspect
-  /localStorage\.setItem/i,
-  /sessionStorage\.setItem/i,
-  // Cookies dynamiques
-  /document\.cookie\s*=/i
+  /consenthub/i,
+  /consentpass/i,
+  /marti[_\-](session|user|id|sdk)/i,
+  /__utiqBlocker/i
 ];
 
-// --- Seuil de détection (nombre de patterns trouvés pour considérer un script comme suspect) ---
-var SEUIL_HEURISTIQUE = 3;
+// Catégorie B : Fingerprinting télécom/périphérique (techniques Utiq-like)
+const PATTERNS_FINGERPRINTING = [
+  /navigator\.connection\s*\.\s*(effectiveType|rtt|downlink|saveData)/i,
+  /navigator\.userAgentData\s*\.\s*getHighEntropyValues/i,
+  /canvas\.(toDataURL|getContext)\b.*(?:getImageData|toDataURL)/si,
+  /AudioContext\b.*create(?:Oscillator|Analyser)/i,
+  /RTCPeerConnection\b.*localDescription/i,
+  /screen\.(colorDepth|pixelDepth)\b.*navigator\.(plugins|language)/si,
+  /Intl\.DateTimeFormat\b.*resolvedOptions\b/i,
+  /new\s+Fingerprint2|fingerprintjs|clientjs\.getFingerprint/i
+];
+
+// Catégorie C : Patterns d'exfiltration de données (envoi réseau)
+const PATTERNS_EXFILTRATION = [
+  /navigator\.(sendBeacon|beacon)\b/i,
+  /XMLHttpRequest\.prototype\.open\b.*(?:POST|PUT)/i,
+  /fetch\s*\(\s*['"].*(?:collect|track|telemetry|beacon|pixel|log)/i,
+  /Image\s*\(\s*\).*\.src\s*=.*(?:\?|&)(?:data|payload|fingerprint|cid)/i,
+  /document\.cookie\s*=\s*['"][^'"]*(?:fingerprint|cid|tracker|session)/i
+];
+
+// --- Seuil de détection pour les patterns génériques (B+C combinés) ---
+const SEUIL_HEURISTIQUE_GENERIQUE = 4;
 
 // ===============================================================
 // FONCTIONS DE DÉTECTION
@@ -90,8 +97,8 @@ var SEUIL_HEURISTIQUE = 3;
  */
 function contientDomaineUtiq(url) {
   if (!url || typeof url !== "string") return false;
-  var urlMinuscule = url.toLowerCase();
-  for (var i = 0; i < DOMAINES_UTIQ.length; i++) {
+  const urlMinuscule = url.toLowerCase();
+  for (let i = 0; i < DOMAINES_UTIQ.length; i++) {
     if (urlMinuscule.indexOf(DOMAINES_UTIQ[i]) !== -1) {
       return true;
     }
@@ -106,8 +113,8 @@ function contientDomaineUtiq(url) {
  */
 function estCleUtiq(cle) {
   if (!cle || typeof cle !== "string") return false;
-  var cleMinuscule = cle.toLowerCase();
-  for (var i = 0; i < CLES_STOCKAGE_UTIQ.length; i++) {
+  const cleMinuscule = cle.toLowerCase();
+  for (let i = 0; i < CLES_STOCKAGE_UTIQ.length; i++) {
     if (cleMinuscule.indexOf(CLES_STOCKAGE_UTIQ[i]) !== -1) {
       return true;
     }
@@ -137,21 +144,50 @@ function supprimerElementUtiq(element, raison) {
 /**
  * Analyse le contenu d'un script pour détecter des comportements
  * de tracking heuristiques (fingerprinting, APIs télécom, etc.)
+ *
+ * Logique de détection en 3 niveaux :
+ *   1. Signature directe Utiq (catégorie A) → suspect immédiatement
+ *   2. Fingerprinting (B) + exfiltration (C) combinés → suspect
+ *   3. Accumulation de patterns B+C ≥ seuil → suspect
+ *
  * @param {string} contenu - Le contenu textuel du script.
  * @returns {boolean} Vrai si le script est suspect.
  */
 function analyserScriptHeuristique(contenu) {
   if (!contenu || typeof contenu !== "string") return false;
-  
-  var score = 0;
-  for (var i = 0; i < PATTERNS_HEURISTIQUES.length; i++) {
-    if (PATTERNS_HEURISTIQUES[i].test(contenu)) {
-      score++;
-      if (score >= SEUIL_HEURISTIQUE) {
-        return true;
-      }
+
+  // Niveau 1 : Signature directe Utiq → suspect immédiatement
+  for (let a = 0; a < PATTERNS_UTIQ_DIRECTS.length; a++) {
+    if (PATTERNS_UTIQ_DIRECTS[a].test(contenu)) {
+      return true;
     }
   }
+
+  // Compte les matches dans chaque catégorie
+  let scoreFingerprinting = 0;
+  for (let b = 0; b < PATTERNS_FINGERPRINTING.length; b++) {
+    if (PATTERNS_FINGERPRINTING[b].test(contenu)) {
+      scoreFingerprinting++;
+    }
+  }
+
+  let scoreExfiltration = 0;
+  for (let c = 0; c < PATTERNS_EXFILTRATION.length; c++) {
+    if (PATTERNS_EXFILTRATION[c].test(contenu)) {
+      scoreExfiltration++;
+    }
+  }
+
+  // Niveau 2 : Fingerprinting ET exfiltration combinés
+  if (scoreFingerprinting >= 2 && scoreExfiltration >= 1) {
+    return true;
+  }
+
+  // Niveau 3 : Accumulation générique au-dessus du seuil
+  if ((scoreFingerprinting + scoreExfiltration) >= SEUIL_HEURISTIQUE_GENERIQUE) {
+    return true;
+  }
+
   return false;
 }
 
@@ -165,51 +201,51 @@ function analyserScriptHeuristique(contenu) {
  */
 function nettoyerElementsUtiq() {
   // Suppression des balises <script src="...utiq...">
-  var scripts = document.querySelectorAll("script[src]");
-  for (var i = 0; i < scripts.length; i++) {
+  const scripts = document.querySelectorAll("script[src]");
+  for (let i = 0; i < scripts.length; i++) {
     if (contientDomaineUtiq(scripts[i].src)) {
       supprimerElementUtiq(scripts[i], "script src");
     }
   }
 
   // Suppression des scripts inline contenant des URLs Utiq ou comportement suspect
-  var scriptsInline = document.querySelectorAll("script:not([src])");
-  for (var j = 0; j < scriptsInline.length; j++) {
-    var contenuScript = scriptsInline[j].textContent;
+  const scriptsInline = document.querySelectorAll("script:not([src])");
+  for (let j = 0; j < scriptsInline.length; j++) {
+    const contenuScript = scriptsInline[j].textContent;
     if (contientDomaineUtiq(contenuScript) || analyserScriptHeuristique(contenuScript)) {
       supprimerElementUtiq(scriptsInline[j], "script inline suspect");
     }
   }
 
   // Suppression des iframes pointant vers Utiq
-  var iframes = document.querySelectorAll("iframe[src]");
-  for (var k = 0; k < iframes.length; k++) {
+  const iframes = document.querySelectorAll("iframe[src]");
+  for (let k = 0; k < iframes.length; k++) {
     if (contientDomaineUtiq(iframes[k].src)) {
       supprimerElementUtiq(iframes[k], "iframe");
     }
   }
 
   // Suppression des images de tracking Utiq (pixels, balises img)
-  var images = document.querySelectorAll("img[src]");
-  for (var m = 0; m < images.length; m++) {
-    var img = images[m];
+  const images = document.querySelectorAll("img[src]");
+  for (let m = 0; m < images.length; m++) {
+    const img = images[m];
     if (contientDomaineUtiq(img.src)) {
       supprimerElementUtiq(img, "pixel image");
     }
   }
 
   // Suppression des liens preload/prefetch vers Utiq
-  var liens = document.querySelectorAll("link[href]");
-  for (var n = 0; n < liens.length; n++) {
+  const liens = document.querySelectorAll("link[href]");
+  for (let n = 0; n < liens.length; n++) {
     if (contientDomaineUtiq(liens[n].href)) {
       supprimerElementUtiq(liens[n], "link preload");
     }
   }
 
   // Suppression des objets et embeds Utiq
-  var objets = document.querySelectorAll("object[data], embed[src]");
-  for (var p = 0; p < objets.length; p++) {
-    var source = objets[p].getAttribute("data") || objets[p].getAttribute("src");
+  const objets = document.querySelectorAll("object[data], embed[src]");
+  for (let p = 0; p < objets.length; p++) {
+    const source = objets[p].getAttribute("data") || objets[p].getAttribute("src");
     if (contientDomaineUtiq(source)) {
       supprimerElementUtiq(objets[p], "object/embed");
     }
@@ -225,10 +261,10 @@ function nettoyerElementsUtiq() {
  * Parcourt document.cookie et expire chaque cookie identifié.
  */
 function nettoyerCookiesUtiq() {
-  var cookies = document.cookie.split(";");
-  for (var i = 0; i < cookies.length; i++) {
-    var cookie = cookies[i].trim();
-    var nomCookie = cookie.split("=")[0].trim();
+  const cookies = document.cookie.split(";");
+  for (let i = 0; i < cookies.length; i++) {
+    const cookie = cookies[i].trim();
+    const nomCookie = cookie.split("=")[0].trim();
 
     if (estCleUtiq(nomCookie)) {
       // Suppression par expiration passée sur le chemin racine
@@ -253,14 +289,14 @@ function nettoyerCookiesUtiq() {
 function nettoyerStockageLocalUtiq() {
   // localStorage
   try {
-    var clesASupprimer = [];
-    for (var i = 0; i < localStorage.length; i++) {
-      var cle = localStorage.key(i);
+    const clesASupprimer = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const cle = localStorage.key(i);
       if (estCleUtiq(cle)) {
         clesASupprimer.push(cle);
       }
     }
-    for (var j = 0; j < clesASupprimer.length; j++) {
+    for (let j = 0; j < clesASupprimer.length; j++) {
       localStorage.removeItem(clesASupprimer[j]);
       compteurBlocagesTab++;
       console.debug("[Utiq Blocker] Clé localStorage neutralisée :", clesASupprimer[j]);
@@ -271,14 +307,14 @@ function nettoyerStockageLocalUtiq() {
 
   // sessionStorage
   try {
-    var clesSessionASupprimer = [];
-    for (var k = 0; k < sessionStorage.length; k++) {
-      var cleSession = sessionStorage.key(k);
+    const clesSessionASupprimer = [];
+    for (let k = 0; k < sessionStorage.length; k++) {
+      const cleSession = sessionStorage.key(k);
       if (estCleUtiq(cleSession)) {
         clesSessionASupprimer.push(cleSession);
       }
     }
-    for (var m = 0; m < clesSessionASupprimer.length; m++) {
+    for (let m = 0; m < clesSessionASupprimer.length; m++) {
       sessionStorage.removeItem(clesSessionASupprimer[m]);
       compteurBlocagesTab++;
       console.debug("[Utiq Blocker] Clé sessionStorage neutralisée :", clesSessionASupprimer[m]);
@@ -300,17 +336,17 @@ function demarrerSurveillanceDOM() {
   if (observateurActif) return;
   observateurActif = true;
 
-  var observateur = new MutationObserver(function (mutations) {
-    var doitNettoyer = false;
+  const observateur = new MutationObserver(function (mutations) {
+    let doitNettoyer = false;
 
-    for (var i = 0; i < mutations.length; i++) {
-      var noeudsAjoutes = mutations[i].addedNodes;
-      for (var j = 0; j < noeudsAjoutes.length; j++) {
-        var noeud = noeudsAjoutes[j];
+    for (let i = 0; i < mutations.length; i++) {
+      const noeudsAjoutes = mutations[i].addedNodes;
+      for (let j = 0; j < noeudsAjoutes.length; j++) {
+        const noeud = noeudsAjoutes[j];
         if (noeud.nodeType !== Node.ELEMENT_NODE) continue;
 
-        var element = noeud;
-        var tag = element.tagName;
+        const element = noeud;
+        const tag = element.tagName;
 
         // Vérifie les scripts injectés
         if (tag === "SCRIPT") {
@@ -366,8 +402,8 @@ function demarrerSurveillanceDOM() {
  * @param {boolean} actif - True si la protection est active.
  */
 function injecterScriptFlag(actif) {
-  var code = "window.__utiqBlocker_enabled = " + (actif ? "true" : "false") + ";";
-  var el = document.createElement("script");
+  const code = "window.__utiqBlocker_enabled = " + (actif ? "true" : "false") + ";";
+  const el = document.createElement("script");
   el.textContent = code;
   el.async = false;
   if (document.documentElement) {
@@ -439,7 +475,7 @@ function injecterScriptIntercepteurPage() {
     } catch (e) {}
   }.toString() + ")();";
 
-  var script = document.createElement("script");
+  const script = document.createElement("script");
   script.textContent = codeInjection;
   script.async = false;
 
@@ -476,7 +512,7 @@ function rapporterBlocages() {
  */
 async function verifierWhitelist() {
   try {
-    var response = await browser.runtime.sendMessage({
+    const response = await browser.runtime.sendMessage({
       action: "getStatus",
       tabId: null,
       hostname: hostnameActuel

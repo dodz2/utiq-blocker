@@ -1,0 +1,24 @@
+{
+  "name": "utiq-blocker",
+  "version": "1.0.0",
+  "description": "Extension Firefox qui bloque le tracking Utiq (operator-based tracking).",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dodz2/utiq-blocker.git"
+  },
+  "keywords": ["firefox", "extension", "privacy", "utiq", "tracking"],
+  "author": "dodz2",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dodz2/utiq-blocker/issues"
+  },
+  "homepage": "https://github.com/dodz2/utiq-blocker#readme",
+  "devDependencies": {
+    "vitest": "^4.1.8"
+  }
+}

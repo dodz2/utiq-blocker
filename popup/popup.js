@@ -5,28 +5,28 @@
 // ============================================================
 
 // Récupération des références aux éléments du DOM
-var toggleCheckbox = document.getElementById("toggleEnabled");
-var statusText = document.getElementById("statusText");
-var tabBlockCountEl = document.getElementById("tabBlockCount");
-var globalBlockCountEl = document.getElementById("globalBlockCount");
-var currentHostnameEl = document.getElementById("currentHostname");
-var toggleWhitelistBtn = document.getElementById("toggleWhitelistBtn");
-var whitelistListEl = document.getElementById("whitelistList");
-var whitelistEmptyEl = document.getElementById("whitelistEmpty");
-var customDomainInput = document.getElementById("customDomainInput");
-var addCustomDomainBtn = document.getElementById("addCustomDomainBtn");
-var customDomainsListEl = document.getElementById("customDomainsList");
-var customDomainsEmptyEl = document.getElementById("customDomainsEmpty");
+const toggleCheckbox = document.getElementById("toggleEnabled");
+const statusText = document.getElementById("statusText");
+const tabBlockCountEl = document.getElementById("tabBlockCount");
+const globalBlockCountEl = document.getElementById("globalBlockCount");
+const currentHostnameEl = document.getElementById("currentHostname");
+const toggleWhitelistBtn = document.getElementById("toggleWhitelistBtn");
+const whitelistListEl = document.getElementById("whitelistList");
+const whitelistEmptyEl = document.getElementById("whitelistEmpty");
+const customDomainInput = document.getElementById("customDomainInput");
+const addCustomDomainBtn = document.getElementById("addCustomDomainBtn");
+const customDomainsListEl = document.getElementById("customDomainsList");
+const customDomainsEmptyEl = document.getElementById("customDomainsEmpty");
 
-var currentTab = null;
-var currentHostname = "";
-var isWhitelisted = false;
-var whitelist = [];
-var customDomains = [];
+let currentTab = null;
+let currentHostname = "";
+let isWhitelisted = false;
+let whitelist = [];
+let customDomains = [];
 
 // Au chargement de la popup, récupération de l'état depuis le background
 document.addEventListener("DOMContentLoaded", async function () {
-  var tabs = await browser.tabs.query({
+  const tabs = await browser.tabs.query({
     active: true,
     currentWindow: true
   });
@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", async function () {
   currentHostname = new URL(currentTab.url).hostname;
   currentHostnameEl.textContent = currentHostname;
 
-  var response = await browser.runtime.sendMessage({
+  const response = await browser.runtime.sendMessage({
     action: "getStatus",
     tabId: currentTab.id,
     hostname: currentHostname
@@ -54,7 +54,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
 // Écouteur du toggle : bascule entre protection active et inactive
 toggleCheckbox.addEventListener("change", async function () {
-  var response = await browser.runtime.sendMessage({
+  const response = await browser.runtime.sendMessage({
     action: "toggleEnabled"
   });
 
@@ -74,7 +74,7 @@ toggleCheckbox.addEventListener("change", async function () {
 
 // Écouteur pour ajouter/retirer le site actuel de la whitelist
 toggleWhitelistBtn.addEventListener("click", async function () {
-  var response;
+  let response;
   if (isWhitelisted) {
     response = await browser.runtime.sendMessage({
       action: "removeFromWhitelist",
@@ -97,10 +97,10 @@ toggleWhitelistBtn.addEventListener("click", async function () {
 
 // Écouteur pour ajouter un domaine personnalisé
 addCustomDomainBtn.addEventListener("click", async function () {
-  var domain = customDomainInput.value.trim();
+  const domain = customDomainInput.value.trim();
   if (!domain) return;
 
-  var response = await browser.runtime.sendMessage({
+  const response = await browser.runtime.sendMessage({
     action: "addCustomDomain",
     domain: domain
   });
@@ -129,9 +129,9 @@ customDomainInput.addEventListener("keypress", function (e) {
  * @param {boolean} [donnees.isWhitelisted] - Si le domaine actuel est whitelisté.
  */
 function actualiserInterface(donnees) {
-  var estActive = donnees.enabled !== undefined ? donnees.enabled : true;
-  var globalCount = donnees.globalCount !== undefined ? donnees.globalCount : 0;
-  var tabCount = donnees.tabBlockCount !== undefined ? donnees.tabBlockCount : 0;
+  const estActive = donnees.enabled !== undefined ? donnees.enabled : true;
+  const globalCount = donnees.globalCount !== undefined ? donnees.globalCount : 0;
+  const tabCount = donnees.tabBlockCount !== undefined ? donnees.tabBlockCount : 0;
 
   whitelist = donnees.whitelist || [];
   isWhitelisted = donnees.isWhitelisted || false;
@@ -178,22 +178,22 @@ function afficherListeBlanche() {
 
   whitelistEmptyEl.style.display = "none";
 
-  for (var i = 0; i < whitelist.length; i++) {
-    var item = document.createElement("div");
+  for (let i = 0; i < whitelist.length; i++) {
+    const item = document.createElement("div");
     item.className = "whitelist-item";
 
-    var span = document.createElement("span");
+    const span = document.createElement("span");
     span.className = "whitelist-item-host";
     span.textContent = whitelist[i];
 
-    var btn = document.createElement("button");
+    const btn = document.createElement("button");
     btn.className = "whitelist-remove-btn";
     btn.textContent = "×";
     btn.dataset.hostname = whitelist[i];
 
     btn.addEventListener("click", async function () {
-      var hostname = this.dataset.hostname;
-      var response = await browser.runtime.sendMessage({
+      const hostname = this.dataset.hostname;
+      const response = await browser.runtime.sendMessage({
         action: "removeFromWhitelist",
         hostname: hostname
       });
@@ -214,7 +214,7 @@ function afficherListeBlanche() {
 }
 
 async function chargerDomainesPersonnalisés() {
-  var response = await browser.runtime.sendMessage({
+  const response = await browser.runtime.sendMessage({
     action: "getCustomDomains"
   });
   if (response && response.domains) {
@@ -234,22 +234,22 @@ function afficherDomainesPersonnalisés() {
 
   customDomainsEmptyEl.style.display = "none";
 
-  for (var i = 0; i < customDomains.length; i++) {
-    var item = document.createElement("div");
+  for (let i = 0; i < customDomains.length; i++) {
+    const item = document.createElement("div");
     item.className = "whitelist-item";
 
-    var span = document.createElement("span");
+    const span = document.createElement("span");
     span.className = "whitelist-item-host";
     span.textContent = customDomains[i];
 
-    var btn = document.createElement("button");
+    const btn = document.createElement("button");
     btn.className = "whitelist-remove-btn";
     btn.textContent = "×";
     btn.dataset.domain = customDomains[i];
 
     btn.addEventListener("click", async function () {
-      var domain = this.dataset.domain;
-      var response = await browser.runtime.sendMessage({
+      const domain = this.dataset.domain;
+      const response = await browser.runtime.sendMessage({
         action: "removeCustomDomain",
         domain: domain
       });

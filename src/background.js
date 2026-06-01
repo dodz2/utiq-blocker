@@ -5,30 +5,30 @@
 // ============================================================
 
 // --- Clés de stockage pour persister les préférences ---
-var STORAGE_KEY_ENABLED = "utiqBlocker_enabled";
-var STORAGE_KEY_BLOCK_COUNT = "utiqBlocker_blockCount";
-var STORAGE_KEY_GLOBAL_COUNT = "utiqBlocker_globalCount";
-var STORAGE_KEY_WHITELIST = "utiqBlocker_whitelist";
-var STORAGE_KEY_CUSTOM_DOMAINS = "utiqBlocker_customDomains";
-var DYNAMIC_RULE_ID_START = 1000;
+const STORAGE_KEY_ENABLED = "utiqBlocker_enabled";
+const STORAGE_KEY_BLOCK_COUNT = "utiqBlocker_blockCount";
+const STORAGE_KEY_GLOBAL_COUNT = "utiqBlocker_globalCount";
+const STORAGE_KEY_WHITELIST = "utiqBlocker_whitelist";
+const STORAGE_KEY_CUSTOM_DOMAINS = "utiqBlocker_customDomains";
+const DYNAMIC_RULE_ID_START = 1000;
 
 // --- Détection de la disponibilité de l'API updateEnabledRulesets ---
 // Cette API n'existe qu'à partir de Firefox 114. Sur Firefox 113 et Android,
 // on dégrade gracieusement : le blocage réseau DNR reste actif en permanence,
 // et le toggle contrôle uniquement le blocage DOM + cookies + stockage.
-var UPDATE_RULESETS_DISPONIBLE =
+const UPDATE_RULESETS_DISPONIBLE =
   typeof browser.declarativeNetRequest !== "undefined" &&
   typeof browser.declarativeNetRequest.updateEnabledRulesets === "function";
 
 // --- Initialisation au moment de l'installation de l'extension ---
 browser.runtime.onInstalled.addListener(async function () {
-  var stored = await browser.storage.local.get([
+  const stored = await browser.storage.local.get([
     STORAGE_KEY_ENABLED,
     STORAGE_KEY_GLOBAL_COUNT,
     STORAGE_KEY_CUSTOM_DOMAINS
   ]);
 
-  var defaults = {};
+  const defaults = {};
   if (stored[STORAGE_KEY_ENABLED] === undefined) {
     defaults[STORAGE_KEY_ENABLED] = true;
   }
@@ -43,17 +43,19 @@ browser.runtime.onInstalled.addListener(async function () {
     await browser.storage.local.set(defaults);
   }
 
-  var estActive = stored[STORAGE_KEY_ENABLED] !== undefined
+  const estActive = stored[STORAGE_KEY_ENABLED] !== undefined
     ? stored[STORAGE_KEY_ENABLED]
     : true;
   await mettreAJourIcone(estActive, false);
   // Met à jour les règles dynamiques au cas où
   await mettreAJourReglesDynamiques();
+  // Reconstruit les règles de session pour la whitelist
+  await mettreAJourReglesWhitelist();
 });
 
 // --- Change l'icône de la barre d'outils selon l'état ---
 async function mettreAJourIcone(estActive, menaceDetectee) {
-  var cheminIcone;
+  let cheminIcone;
   if (!estActive) {
     cheminIcone = {
       16: "icons/icon-inactive.svg",
@@ -111,10 +113,73 @@ function isDynamicDNRDisponible() {
 }
 
 /**
+ * Vérifie si l'API DNR session rules est disponible.
+ */
+function isSessionDNRDisponible() {
+  return typeof browser.declarativeNetRequest !== "undefined" &&
+         typeof browser.declarativeNetRequest.updateSessionRules === "function";
+}
+
+/**
+ * Met à jour les règles de session DNR pour autoriser les requêtes
+ * Utiq sur les domaines whitelistés. Ces règles "allow" à priorité
+ * élevée surclassent les règles "block" statiques de rules.json.
+ * Appelée à chaque modification de la whitelist.
+ */
+async function mettreAJourReglesWhitelist() {
+  if (!isSessionDNRDisponible()) return;
+
+  try {
+    const stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
+    const whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+
+    // Récupère les règles de session existantes de notre extension
+    const existingRules = await browser.declarativeNetRequest.getSessionRules();
+    const existingIds = existingRules
+      .filter(function(rule) { return rule.id >= 2000; })
+      .map(function(rule) { return rule.id; });
+
+    // Supprime les anciennes règles de whitelist
+    if (existingIds.length > 0) {
+      await browser.declarativeNetRequest.updateSessionRules({
+        removeRuleIds: existingIds
+      });
+    }
+
+    // Crée une règle "allow" par domaine whitelisté
+    if (whitelist.length > 0) {
+      const newRules = [];
+      for (let i = 0; i < whitelist.length; i++) {
+        newRules.push({
+          id: 2000 + i,
+          priority: 10,
+          action: { type: "allow" },
+          condition: {
+            initiatorDomains: [whitelist[i]],
+            resourceTypes: [
+              "main_frame", "sub_frame", "script", "image",
+              "xmlhttprequest", "ping", "stylesheet", "font",
+              "object", "media", "websocket", "webtransport",
+              "webbundle", "other"
+            ]
+          }
+        });
+      }
+
+      await browser.declarativeNetRequest.updateSessionRules({
+        addRules: newRules
+      });
+    }
+  } catch (e) {
+    // Silencieux (version Firefox trop ancienne ou Android)
+  }
+}
+
+/**
  * Récupère la liste des domaines personnalisés depuis le stockage.
  */
 async function getCustomDomains() {
-  var stored = await browser.storage.local.get(STORAGE_KEY_CUSTOM_DOMAINS);
+  const stored = await browser.storage.local.get(STORAGE_KEY_CUSTOM_DOMAINS);
   return stored[STORAGE_KEY_CUSTOM_DOMAINS] || [];
 }
 
@@ -125,9 +190,9 @@ async function mettreAJourReglesDynamiques() {
   if (!isDynamicDNRDisponible()) return;
 
   try {
-    var customDomains = await getCustomDomains();
-    var existingRules = await browser.declarativeNetRequest.getDynamicRules();
-    var existingIds = existingRules.map(function(rule) { return rule.id; });
+    const customDomains = await getCustomDomains();
+    const existingRules = await browser.declarativeNetRequest.getDynamicRules();
+    const existingIds = existingRules.map(function(rule) { return rule.id; });
 
     // Supprime toutes les règles dynamiques existantes de notre extension
     if (existingIds.length > 0) {
@@ -138,8 +203,8 @@ async function mettreAJourReglesDynamiques() {
 
     // Ajoute les nouvelles règles pour chaque domaine personnalisé
     if (customDomains.length > 0) {
-      var newRules = [];
-      for (var i = 0; i < customDomains.length; i++) {
+      const newRules = [];
+      for (let i = 0; i < customDomains.length; i++) {
         newRules.push({
           id: DYNAMIC_RULE_ID_START + i,
           priority: 1,
@@ -165,26 +230,26 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
   switch (message.action) {
 
     case "getStatus": {
-      var stored = await browser.storage.local.get([
+      const stored = await browser.storage.local.get([
         STORAGE_KEY_ENABLED,
         STORAGE_KEY_GLOBAL_COUNT,
         STORAGE_KEY_WHITELIST
       ]);
 
-      var tabBlockCount = 0;
-      var tabId = message.tabId;
+      let tabBlockCount = 0;
+      const tabId = message.tabId;
       if (tabId) {
         try {
-          var tabData = await browser.storage.local.get(
+          const tabData = await browser.storage.local.get(
             STORAGE_KEY_BLOCK_COUNT + "_" + tabId
           );
           tabBlockCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
         } catch (e) {}
       }
 
-      var hostname = message.hostname || "";
-      var whitelist = stored[STORAGE_KEY_WHITELIST] || [];
-      var isWhitelisted = whitelist.indexOf(hostname) !== -1;
+      const hostname = message.hostname || "";
+      const whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+      const isWhitelisted = whitelist.indexOf(hostname) !== -1;
 
       return {
         enabled: stored[STORAGE_KEY_ENABLED] !== false,
@@ -196,8 +261,8 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "toggleEnabled": {
-      var storedToggle = await browser.storage.local.get(STORAGE_KEY_ENABLED);
-      var nouvelEtat = !(storedToggle[STORAGE_KEY_ENABLED] !== false);
+      const storedToggle = await browser.storage.local.get(STORAGE_KEY_ENABLED);
+      const nouvelEtat = !(storedToggle[STORAGE_KEY_ENABLED] !== false);
       await browser.storage.local.set({ [STORAGE_KEY_ENABLED]: nouvelEtat });
 
       await basculerReglesDNR(nouvelEtat);
@@ -206,49 +271,51 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "addToWhitelist": {
-      var hostname = message.hostname;
+      const hostname = message.hostname;
       if (!hostname) return { error: "Hostname manquant" };
 
-      var stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
-      var whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+      const stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
+      const whitelist = stored[STORAGE_KEY_WHITELIST] || [];
 
       if (whitelist.indexOf(hostname) === -1) {
         whitelist.push(hostname);
         await browser.storage.local.set({ [STORAGE_KEY_WHITELIST]: whitelist });
+        await mettreAJourReglesWhitelist();
       }
 
       return { success: true, whitelist: whitelist };
     }
 
     case "removeFromWhitelist": {
-      var hostname = message.hostname;
+      const hostname = message.hostname;
       if (!hostname) return { error: "Hostname manquant" };
 
-      var stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
-      var whitelist = stored[STORAGE_KEY_WHITELIST] || [];
-      var newWhitelist = [];
+      const stored = await browser.storage.local.get(STORAGE_KEY_WHITELIST);
+      const whitelist = stored[STORAGE_KEY_WHITELIST] || [];
+      const newWhitelist = [];
 
-      for (var i = 0; i < whitelist.length; i++) {
+      for (let i = 0; i < whitelist.length; i++) {
         if (whitelist[i] !== hostname) {
           newWhitelist.push(whitelist[i]);
         }
       }
 
       await browser.storage.local.set({ [STORAGE_KEY_WHITELIST]: newWhitelist });
+      await mettreAJourReglesWhitelist();
 
       return { success: true, whitelist: newWhitelist };
     }
 
     case "getCustomDomains": {
-      var customDomains = await getCustomDomains();
+      const customDomains = await getCustomDomains();
       return { success: true, domains: customDomains };
     }
 
     case "addCustomDomain": {
-      var domain = message.domain;
+      const domain = message.domain;
       if (!domain) return { error: "Domaine manquant" };
 
-      var customDomains = await getCustomDomains();
+      const customDomains = await getCustomDomains();
 
       if (customDomains.indexOf(domain) === -1) {
         customDomains.push(domain);
@@ -260,13 +327,13 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "removeCustomDomain": {
-      var domain = message.domain;
+      const domain = message.domain;
       if (!domain) return { error: "Domaine manquant" };
 
-      var customDomains = await getCustomDomains();
-      var newDomains = [];
+      const customDomains = await getCustomDomains();
+      const newDomains = [];
 
-      for (var j = 0; j < customDomains.length; j++) {
+      for (let j = 0; j < customDomains.length; j++) {
         if (customDomains[j] !== domain) {
           newDomains.push(customDomains[j]);
         }
@@ -279,12 +346,12 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "reportBlock": {
-      var newCount = message.count;
-      var tabId = sender.tab ? sender.tab.id : message.tabId;
+      const newCount = message.count;
+      const tabId = sender.tab ? sender.tab.id : message.tabId;
 
-      var previousTabCount = 0;
+      let previousTabCount = 0;
       if (tabId) {
-        var tabData = await browser.storage.local.get(
+        const tabData = await browser.storage.local.get(
           STORAGE_KEY_BLOCK_COUNT + "_" + tabId
         );
         previousTabCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
@@ -294,14 +361,14 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
         });
       }
 
-      var diff = newCount - previousTabCount;
+      const diff = newCount - previousTabCount;
       if (diff > 0) {
-        var storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
-        var nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
+        const storedGlobal = await browser.storage.local.get(STORAGE_KEY_GLOBAL_COUNT);
+        const nouveauGlobal = (storedGlobal[STORAGE_KEY_GLOBAL_COUNT] || 0) + diff;
         await browser.storage.local.set({ [STORAGE_KEY_GLOBAL_COUNT]: nouveauGlobal });
       }
 
-      var etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
+      const etat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
       if (etat[STORAGE_KEY_ENABLED] !== false && newCount > 0) {
         await mettreAJourIcone(true, true);
       }
@@ -310,7 +377,7 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
     }
 
     case "clearThreatBadge": {
-      var etatThreat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
+      const etatThreat = await browser.storage.local.get(STORAGE_KEY_ENABLED);
       await mettreAJourIcone(etatThreat[STORAGE_KEY_ENABLED] !== false, false);
       return { success: true };
     }
@@ -325,8 +392,8 @@ browser.tabs.onRemoved.addListener(async function (tabId) {
 });
 
 (async function init() {
-  var stored = await browser.storage.local.get(STORAGE_KEY_ENABLED);
-  var estActive = stored[STORAGE_KEY_ENABLED] !== false;
+  const stored = await browser.storage.local.get(STORAGE_KEY_ENABLED);
+  const estActive = stored[STORAGE_KEY_ENABLED] !== false;
   await mettreAJourIcone(estActive, false);
 
   if (!estActive) {
@@ -335,4 +402,7 @@ browser.tabs.onRemoved.addListener(async function (tabId) {
 
   // Initialise les règles dynamiques pour les domaines personnalisés
   await mettreAJourReglesDynamiques();
+
+  // Reconstruit les règles de session pour la whitelist
+  await mettreAJourReglesWhitelist();
 })();
