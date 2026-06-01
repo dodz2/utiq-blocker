@@ -161,8 +161,7 @@ async function mettreAJourReglesWhitelist() {
             resourceTypes: [
               "main_frame", "sub_frame", "script", "image",
               "xmlhttprequest", "ping", "stylesheet", "font",
-              "object", "media", "websocket", "webtransport",
-              "webbundle", "other"
+              "object", "media", "websocket", "other"
             ]
           }
         });
@@ -213,7 +212,7 @@ async function mettreAJourReglesDynamiques() {
           action: { type: "block" },
           condition: {
             urlFilter: "||" + customDomains[i] + "/",
-            resourceTypes: ["main_frame", "sub_frame", "script", "image", "xmlhttprequest", "ping", "stylesheet", "font", "object", "media", "websocket", "webtransport", "webbundle", "other"]
+            resourceTypes: ["main_frame", "sub_frame", "script", "image", "xmlhttprequest", "ping", "stylesheet", "font", "object", "media", "websocket", "other"]
           }
         });
       }

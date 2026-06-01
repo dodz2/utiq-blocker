@@ -53,9 +53,7 @@
       "id": "utiq-blocker@dodz2.github.io",
       "strict_min_version": "113.0",
       "data_collection_permissions": {
-        "required": ["none"],
-        "newtab": [],
-        "search": []
+        "required": ["none"]
       }
     }
   }
