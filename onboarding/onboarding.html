@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bienvenue — Utiq Blocker</title>
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <div class="container">
+
+    <header class="hero">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="64" height="64">
+        <path fill="#4CAF50" d="M24 0L3 9v13.5c0 11.3 8.8 21.7 21 25.5 12.2-3.8 21-14.2 21-25.5V9L24 0z"/>
+        <path fill="#FFF" d="M15 15h6v9c0 3.3 2.7 6 6 6s6-2.7 6-6v-9h6v9c0 6.6-5.4 12-12 12s-12-5.4-12-12v-9z"/>
+      </svg>
+      <h1>Utiq Blocker est installé !</h1>
+      <p class="subtitle">Vous êtes maintenant protégé contre le tracking Utiq.</p>
+    </header>
+
+    <section class="card">
+      <h2>🔍 Qu'est-ce qu'Utiq ?</h2>
+      <p>
+        Utiq est un système de tracking publicitaire porté par des opérateurs télécoms
+        européens (Orange, Vodafone, Deutsche Telekom…). Contrairement aux cookies,
+        il exploite votre <strong>connexion réseau</strong> pour vous identifier,
+        contournant ainsi les protections classiques de votre navigateur.
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>🛡️ Ce que fait l'extension</h2>
+      <ul class="feature-list">
+        <li><strong>Bloque les requêtes</strong> vers les serveurs Utiq avant qu'elles n'atteignent votre navigateur.</li>
+        <li><strong>Neutralise les scripts</strong> Utiq injectés dans les pages (y compris les injections tardives).</li>
+        <li><strong>Nettoie les traces</strong> déjà déposées : cookies, localStorage, sessionStorage.</li>
+        <li><strong>Fonctionne silencieusement</strong> — aucune donnée ne quitte votre navigateur.</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <h2>⚙️ Comment l'utiliser</h2>
+      <div class="steps">
+        <div class="step">
+          <span class="step-icon">1</span>
+          <div>
+            <strong>Cliquez sur l'icône</strong> 🛡️ dans la barre d'outils pour ouvrir le popup.
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-icon">2</span>
+          <div>
+            <strong>Consultez les statistiques</strong> : nombre de trackers bloqués sur la page et au total.
+          </div>
+        </div>
+        <div class="step">
+          <span class="step-icon">3</span>
+          <div>
+            <strong>Gérez la whitelist</strong> : si un site ne fonctionne pas correctement, vous pouvez y autoriser Utiq temporairement.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card card-accent">
+      <h2>🎨 Les couleurs de l'icône</h2>
+      <div class="icon-legend">
+        <div class="legend-item">
+          <span class="dot dot-green"></span>
+          <span><strong>Vert</strong> — Vous êtes protégé.</span>
+        </div>
+        <div class="legend-item">
+          <span class="dot dot-orange"></span>
+          <span><strong>Orange</strong> — Un tracker a été bloqué sur cette page.</span>
+        </div>
+        <div class="legend-item">
+          <span class="dot dot-grey"></span>
+          <span><strong>Gris</strong> — La protection est désactivée.</span>
+        </div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>
+        Extension open-source ·
+        <a href="https://github.com/dodz2/utiq-blocker" target="_blank" rel="noopener">GitHub</a>
+        · Aucune donnée collectée · 100% local
+      </p>
+    </footer>
+
+  </div>
+</body>
+</html>

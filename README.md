@@ -1,5 +1,7 @@
 # 🛡️ Utiq Blocker — Reprenez le contrôle sur votre navigation
 
+[![CI](https://github.com/dodz2/utiq-blocker/actions/workflows/ci.yml/badge.svg)](https://github.com/dodz2/utiq-blocker/actions/workflows/ci.yml)
+
 Une extension Firefox simple et efficace qui bloque le tracking Utiq (ce système de suivi imposé par certains opérateurs télécoms européens).
 
 ## Qu'est-ce qu'Utiq et pourquoi le bloquer ?

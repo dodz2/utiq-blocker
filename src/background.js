@@ -11,6 +11,8 @@ const STORAGE_KEY_GLOBAL_COUNT = "utiqBlocker_globalCount";
 const STORAGE_KEY_WHITELIST = "utiqBlocker_whitelist";
 const STORAGE_KEY_CUSTOM_DOMAINS = "utiqBlocker_customDomains";
 const DYNAMIC_RULE_ID_START = 1000;
+const STORAGE_KEY_HISTORY = "utiqBlocker_history";
+const HISTORY_MAX_DAYS = 7;
 
 // --- Détection de la disponibilité de l'API updateEnabledRulesets ---
 // Cette API n'existe qu'à partir de Firefox 114. Sur Firefox 113 et Android,
@@ -21,7 +23,7 @@ const UPDATE_RULESETS_DISPONIBLE =
   typeof browser.declarativeNetRequest.updateEnabledRulesets === "function";
 
 // --- Initialisation au moment de l'installation de l'extension ---
-browser.runtime.onInstalled.addListener(async function () {
+browser.runtime.onInstalled.addListener(async function (details) {
   const stored = await browser.storage.local.get([
     STORAGE_KEY_ENABLED,
     STORAGE_KEY_GLOBAL_COUNT,
@@ -42,6 +44,14 @@ browser.runtime.onInstalled.addListener(async function () {
   if (Object.keys(defaults).length > 0) {
     await browser.storage.local.set(defaults);
   }
+
+  // Ouvre la page d'onboarding au premier install
+  if (details.reason === "install") {
+    await browser.tabs.create({
+      url: browser.runtime.getURL("onboarding/onboarding.html")
+    });
+  }
+
   // L'icône et les règles DNR sont mises à jour par l'IIFE d'init ci-dessous
 });
 
@@ -91,7 +101,7 @@ async function basculerReglesDNR(activer) {
         disableRulesetIds: ["utiq_rules"]
       });
     }
-  } catch (e) {
+  } catch (_e) {
     // Ignore silencieusement (Firefox Android ou version trop ancienne)
   }
 }
@@ -162,7 +172,7 @@ async function mettreAJourReglesWhitelist() {
         addRules: newRules
       });
     }
-  } catch (e) {
+  } catch (_e) {
     // Silencieux (version Firefox trop ancienne ou Android)
   }
 }
@@ -212,9 +222,40 @@ async function mettreAJourReglesDynamiques() {
         addRules: newRules
       });
     }
-  } catch (e) {
-    console.error("[Utiq Blocker] Erreur mise à jour règles dynamiques:", e);
+  } catch (_e) {
+    console.error("[Utiq Blocker] Erreur mise à jour règles dynamiques:", _e);
   }
+}
+
+/**
+ * Enregistre un événement de blocage dans l'historique.
+ * Nettoie automatiquement les entrées de plus de 7 jours.
+ */
+async function enregistrerHistorique(domain, count) {
+  if (count <= 0) return;
+  try {
+    const stored = await browser.storage.local.get(STORAGE_KEY_HISTORY);
+    const history = stored[STORAGE_KEY_HISTORY] || [];
+    const now = new Date();
+    const dateStr = now.toISOString().split("T")[0];
+
+    // Cherche une entrée existante pour ce domaine aujourd'hui
+    const existing = history.find(function(e) {
+      return e.date === dateStr && e.domain === domain;
+    });
+    if (existing) {
+      existing.count += count;
+    } else {
+      history.push({ date: dateStr, domain: domain, count: count });
+    }
+
+    // Nettoie les entrées de plus de 7 jours
+    const cutoff = new Date(now.getTime() - HISTORY_MAX_DAYS * 86400000);
+    const cutoffStr = cutoff.toISOString().split("T")[0];
+    const cleaned = history.filter(function(e) { return e.date >= cutoffStr; });
+
+    await browser.storage.local.set({ [STORAGE_KEY_HISTORY]: cleaned });
+  } catch (_e) { /* storage non disponible */ }
 }
 
 // --- Gestion des messages entrants (popup et content scripts) ---
@@ -236,7 +277,7 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
             STORAGE_KEY_BLOCK_COUNT + "_" + tabId
           );
           tabBlockCount = tabData[STORAGE_KEY_BLOCK_COUNT + "_" + tabId] || 0;
-        } catch (e) {}
+        } catch (_e) { /* tab data non disponible */ }
       }
 
       const hostname = message.hostname || "";
@@ -365,7 +406,16 @@ browser.runtime.onMessage.addListener(async function (message, sender) {
         await mettreAJourIcone(true, true);
       }
 
+      // Enregistre dans l'historique
+      const domain = sender.tab ? new URL(sender.tab.url).hostname : "unknown";
+      await enregistrerHistorique(domain, newCount);
+
       return { success: true };
+    }
+
+    case "getHistory": {
+      const histStored = await browser.storage.local.get(STORAGE_KEY_HISTORY);
+      return { success: true, history: histStored[STORAGE_KEY_HISTORY] || [] };
     }
 
     case "clearThreatBadge": {

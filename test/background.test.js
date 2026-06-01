@@ -3,7 +3,7 @@
 // Teste la logique de gestion d'état, whitelist et DNR
 // ============================================================
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { createBrowserMock, loadScriptInContext } from "./setup.js";
 
 async function loadBackground(overrides = {}) {

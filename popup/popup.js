@@ -17,6 +17,8 @@ const customDomainInput = document.getElementById("customDomainInput");
 const addCustomDomainBtn = document.getElementById("addCustomDomainBtn");
 const customDomainsListEl = document.getElementById("customDomainsList");
 const customDomainsEmptyEl = document.getElementById("customDomainsEmpty");
+const exportCSVBtn = document.getElementById("exportCSV");
+const exportJSONBtn = document.getElementById("exportJSON");
 
 let currentTab = null;
 let currentHostname = "";
@@ -264,3 +266,47 @@ function afficherDomainesPersonnalisés() {
     customDomainsListEl.appendChild(item);
   }
 }
+
+// ============================================================
+// EXPORT DES DONNÉES DE BLOCAGE (CSV / JSON)
+// ============================================================
+
+/**
+ * Récupère l'historique des blocages depuis le background
+ * et déclenche un téléchargement dans le format demandé.
+ * @param {string} format - "csv" ou "json"
+ */
+async function exporterDonnees(format) {
+  const response = await browser.runtime.sendMessage({ action: "getHistory" });
+  if (!response || !response.history || response.history.length === 0) {
+    return;
+  }
+
+  const history = response.history;
+  let content, mimeType, extension;
+
+  if (format === "csv") {
+    const lignes = ["date,domaine,blocages"];
+    for (const entry of history) {
+      lignes.push(entry.date + "," + entry.domain + "," + entry.count);
+    }
+    content = lignes.join("\n");
+    mimeType = "text/csv";
+    extension = "csv";
+  } else {
+    content = JSON.stringify(history, null, 2);
+    mimeType = "application/json";
+    extension = "json";
+  }
+
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "utiq-blocker-blocages." + extension;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+exportCSVBtn.addEventListener("click", function () { exporterDonnees("csv"); });
+exportJSONBtn.addEventListener("click", function () { exporterDonnees("json"); });

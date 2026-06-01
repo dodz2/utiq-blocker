@@ -1,0 +1,172 @@
+/* ============================================================
+   Utiq Blocker - Styles de la page d'onboarding
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Oxygen-Sans, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  background-color: #1a1a2e;
+  color: #e0e0e0;
+  line-height: 1.6;
+}
+
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* --- Hero --- */
+.hero {
+  text-align: center;
+  padding: 32px 0;
+}
+
+.hero svg {
+  margin-bottom: 16px;
+}
+
+.hero h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #4caf50;
+  margin-bottom: 8px;
+}
+
+.subtitle {
+  font-size: 16px;
+  color: #aaa;
+}
+
+/* --- Cards --- */
+.card {
+  background-color: #16213e;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.card h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: #e0e0e0;
+  margin-bottom: 12px;
+}
+
+.card p {
+  font-size: 14px;
+  color: #bbb;
+}
+
+.card-accent {
+  border-left: 4px solid #4caf50;
+}
+
+/* --- Feature list --- */
+.feature-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.feature-list li {
+  font-size: 14px;
+  color: #bbb;
+  padding-left: 24px;
+  position: relative;
+}
+
+.feature-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #4caf50;
+  font-weight: 700;
+}
+
+/* --- Steps --- */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.step-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  background-color: #4caf50;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.step div {
+  font-size: 14px;
+  color: #bbb;
+}
+
+/* --- Icon legend --- */
+.icon-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #bbb;
+}
+
+.dot {
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  border-radius: 50%;
+}
+
+.dot-green { background-color: #4caf50; }
+.dot-orange { background-color: #ff9800; }
+.dot-grey { background-color: #757575; }
+
+/* --- Footer --- */
+.footer {
+  text-align: center;
+  padding-top: 16px;
+}
+
+.footer p {
+  font-size: 12px;
+  color: #555;
+}
+
+.footer a {
+  color: #4caf50;
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}

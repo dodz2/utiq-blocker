@@ -58,7 +58,7 @@ const PATTERNS_UTIQ_DIRECTS = [
   /utiq/i,
   /consenthub/i,
   /consentpass/i,
-  /marti[_\-](session|user|id|sdk)/i,
+  /marti[_-](session|user|id|sdk)/i,
   /__utiqBlocker/i
 ];
 
@@ -137,7 +137,7 @@ function supprimerElementUtiq(element, raison) {
       "[Utiq Blocker] Élément neutralisé (" + raison + ") :",
       element
     );
-  } catch (erreur) {
+  } catch (_erreur) {
     // L'élément a peut-être déjà été supprimé
   }
 }
@@ -302,7 +302,7 @@ function nettoyerStockageLocalUtiq() {
       compteurBlocagesTab++;
       console.debug("[Utiq Blocker] Clé localStorage neutralisée :", clesASupprimer[j]);
     }
-  } catch (erreur) {
+  } catch (_erreur) {
     // localStorage peut être inaccessible (iframe sandbox, etc.)
   }
 
@@ -320,7 +320,7 @@ function nettoyerStockageLocalUtiq() {
       compteurBlocagesTab++;
       console.debug("[Utiq Blocker] Clé sessionStorage neutralisée :", clesSessionASupprimer[m]);
     }
-  } catch (erreur) {
+  } catch (_erreur) {
     // sessionStorage peut être inaccessible
   }
 }
@@ -398,6 +398,64 @@ function demarrerSurveillanceDOM() {
 // ===============================================================
 
 /**
+ * Fonction interceptrice auto-exécutée injectée dans le monde
+ * principal de la page pour intercepter localStorage.setItem
+ * et document.cookie au niveau page (pas content script).
+ * Doit être self-contained (pas de closure externe).
+ */
+/* eslint-disable no-var */
+function intercepteurPageContext() {
+  var CLES_UTIQ = [
+    "utiq_consent", "utiq_consentpass", "utiq_id", "utiq_session",
+    "utiq_user", "utiq_token", "utiq_auth", "utiq_tracking",
+    "__utiq", "_utiq", "consenthub", "consentpass",
+    "marti_session", "marti_user", "marti_id"
+  ];
+
+  function estMotifUtiq(cle) {
+    if (!cle || typeof cle !== "string") return false;
+    var c = cle.toLowerCase();
+    for (var i = 0; i < CLES_UTIQ.length; i++) {
+      if (c.indexOf(CLES_UTIQ[i]) !== -1) return true;
+    }
+    return false;
+  }
+
+  function estBlocageActif() {
+    return window.__utiqBlocker_enabled !== false;
+  }
+
+  try {
+    var setItemOriginal = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (cle, valeur) {
+      if (estBlocageActif() && estMotifUtiq(cle)) {
+        console.debug("[Utiq Blocker] localStorage.setItem bloqué :", cle);
+        return;
+      }
+      return setItemOriginal.call(this, cle, valeur);
+    };
+  } catch (_e) { /* déjà patché */ }
+
+  try {
+    var descCookie = Object.getOwnPropertyDescriptor(Document.prototype, "cookie");
+    if (descCookie && descCookie.set) {
+      Object.defineProperty(Document.prototype, "cookie", {
+        get: descCookie.get,
+        set: function (valeur) {
+          if (estBlocageActif() && estMotifUtiq(valeur)) {
+            console.debug("[Utiq Blocker] document.cookie bloqué :", valeur);
+            return;
+          }
+          descCookie.set.call(this, valeur);
+        },
+        configurable: true
+      });
+    }
+  } catch (_e) { /* déjà patché */ }
+}
+/* eslint-enable no-var */
+
+/**
  * Injecte un script dans le contexte de la page pour définir
  * le flag __utiqBlocker_enabled que le script intercepteur lira.
  * @param {boolean} actif - True si la protection est active.
@@ -411,70 +469,40 @@ function injecterScriptFlag(actif) {
     try {
       document.documentElement.appendChild(el);
       el.parentNode.removeChild(el);
-    } catch (e) {}
+    } catch (_e) { /* CSP ou DOM non prêt */ }
   }
 }
 
 /**
- * Injecte un script dans le contexte de la page web (pas dans
- * le contexte isolé du content script) pour intercepter
- * localStorage.setItem et document.cookie.
- * Le script vérifie window.__utiqBlocker_enabled avant de bloquer,
- * permettant au content script de contrôler l'activation.
+ * Injecte l'intercepteur storage/cookies dans le contexte page.
+ * Essaie d'abord la méthode CSP-safe (scripting API, world:MAIN),
+ * puis tombe back sur l'injection DOM classique.
  */
-function injecterScriptIntercepteurPage() {
-  // Évite d'injecter le patch plusieurs fois (empilement inutile)
+async function injecterScriptIntercepteurPage() {
   if (intercepteurDejaInjecte) return;
   intercepteurDejaInjecte = true;
-  var codeInjection = "(" + function () {
-    var CLES_UTIQ = [
-      "utiq_consent", "utiq_consentpass", "utiq_id", "utiq_session",
-      "utiq_user", "utiq_token", "utiq_auth", "utiq_tracking",
-      "__utiq", "_utiq", "consenthub", "consentpass",
-      "marti_session", "marti_user", "marti_id"
-    ];
 
-    function estMotifUtiq(cle) {
-      if (!cle || typeof cle !== "string") return false;
-      var c = cle.toLowerCase();
-      for (var i = 0; i < CLES_UTIQ.length; i++) {
-        if (c.indexOf(CLES_UTIQ[i]) !== -1) return true;
-      }
-      return false;
-    }
-
-    function estBlocageActif() {
-      return window.__utiqBlocker_enabled !== false;
-    }
-
-    try {
-      var setItemOriginal = Storage.prototype.setItem;
-      Storage.prototype.setItem = function (cle, valeur) {
-        if (estBlocageActif() && estMotifUtiq(cle)) {
-          console.debug("[Utiq Blocker] localStorage.setItem bloqué :", cle);
-          return;
-        }
-        return setItemOriginal.call(this, cle, valeur);
-      };
-    } catch (e) {}
-
-    try {
-      var descCookie = Object.getOwnPropertyDescriptor(Document.prototype, "cookie");
-      if (descCookie && descCookie.set) {
-        Object.defineProperty(Document.prototype, "cookie", {
-          get: descCookie.get,
-          set: function (valeur) {
-            if (estBlocageActif() && estMotifUtiq(valeur)) {
-              console.debug("[Utiq Blocker] document.cookie bloqué :", valeur);
-              return;
-            }
-            descCookie.set.call(this, valeur);
-          },
-          configurable: true
+  // Tentative CSP-safe via scripting.executeScript (Firefox 128+)
+  try {
+    if (typeof browser.scripting !== "undefined" &&
+        typeof browser.scripting.executeScript === "function") {
+      const tab = await browser.tabs.getCurrent();
+      if (tab && tab.id) {
+        await browser.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: "MAIN",
+          func: intercepteurPageContext
         });
+        console.debug("[Utiq Blocker] Intercepteur injecté via scripting API (CSP-safe)");
+        return;
       }
-    } catch (e) {}
-  }.toString() + ")();";
+    }
+  } catch (_e) {
+    // API non disponible ou world:MAIN non supporté → fallback DOM
+  }
+
+  // Fallback : injection DOM classique (échoue sur sites CSP strict)
+  const codeInjection = "(" + intercepteurPageContext.toString() + ")();";
 
   const script = document.createElement("script");
   script.textContent = codeInjection;
@@ -484,7 +512,7 @@ function injecterScriptIntercepteurPage() {
     try {
       document.documentElement.appendChild(script);
       script.parentNode.removeChild(script);
-    } catch (e) {}
+    } catch (_e) { /* CSP bloque l'injection */ }
   }
 }
 
@@ -502,7 +530,7 @@ function rapporterBlocages() {
       action: "reportBlock",
       count: compteurBlocagesTab
     });
-  } catch (erreur) {
+  } catch (_erreur) {
     // Le contexte peut ne pas être prêt (page en cours de fermeture)
   }
 }
@@ -523,7 +551,7 @@ async function verifierWhitelist() {
     } else {
       protectionActive = response ? response.enabled !== false : true;
     }
-  } catch (e) {
+  } catch (_e) {
     protectionActive = true;
   }
 }
@@ -547,7 +575,7 @@ async function initialiserUtiqBlocker() {
     nettoyerElementsUtiq();
     nettoyerCookiesUtiq();
     nettoyerStockageLocalUtiq();
-    injecterScriptIntercepteurPage();
+    await injecterScriptIntercepteurPage();
     demarrerSurveillanceDOM();
     rapporterBlocages();
     console.debug(
@@ -572,7 +600,7 @@ async function initialiserUtiqBlocker() {
     if (!changes.utiqBlocker_enabled && !changes.utiqBlocker_whitelist) return;
 
     // Revérifie l'état et la whitelist
-    verifierWhitelist().then(function() {
+    verifierWhitelist().then(async function() {
       injecterScriptFlag(protectionActive);
 
       if (protectionActive) {
@@ -580,7 +608,7 @@ async function initialiserUtiqBlocker() {
         nettoyerElementsUtiq();
         nettoyerCookiesUtiq();
         nettoyerStockageLocalUtiq();
-        injecterScriptIntercepteurPage();
+        await injecterScriptIntercepteurPage();
         demarrerSurveillanceDOM();
         rapporterBlocages();
       } else {
