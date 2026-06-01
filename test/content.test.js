@@ -251,8 +251,8 @@ describe("constantes de détection", () => {
   let ctx;
   beforeEach(() => { ctx = loadContent(); });
 
-  it("DOMAINES_UTIQ contient 9 domaines", () => {
-    expect(ctx.__get("DOMAINES_UTIQ")).toHaveLength(9);
+  it("DOMAINES_UTIQ contient 10 domaines", () => {
+    expect(ctx.__get("DOMAINES_UTIQ")).toHaveLength(10);
   });
 
   it("CLES_STOCKAGE_UTIQ contient 15 clés", () => {

@@ -9,6 +9,7 @@
 const DOMAINES_UTIQ = [
   "utiq.com",
   "consenthub.utiq.com",
+  "docs.utiq.com",
   "marti.utiq.com",
   "api.utiq.com",
   "cdn.utiq.com",

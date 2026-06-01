@@ -42,15 +42,7 @@ browser.runtime.onInstalled.addListener(async function () {
   if (Object.keys(defaults).length > 0) {
     await browser.storage.local.set(defaults);
   }
-
-  const estActive = stored[STORAGE_KEY_ENABLED] !== undefined
-    ? stored[STORAGE_KEY_ENABLED]
-    : true;
-  await mettreAJourIcone(estActive, false);
-  // Met à jour les règles dynamiques au cas où
-  await mettreAJourReglesDynamiques();
-  // Reconstruit les règles de session pour la whitelist
-  await mettreAJourReglesWhitelist();
+  // L'icône et les règles DNR sont mises à jour par l'IIFE d'init ci-dessous
 });
 
 // --- Change l'icône de la barre d'outils selon l'état ---

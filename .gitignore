@@ -30,6 +30,5 @@ web-ext-artifacts/
 tmp/
 temp/
 
-# Dépendances (non applicable ici, mais bonne pratique)
+# Dépendances
 node_modules/
-package-lock.json
