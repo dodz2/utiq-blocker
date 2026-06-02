@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Utiq Blocker",
-  "version": "1.0.0",
+  "version": "1.2.2",
   "description": "Bloque le système de tracking Utiq (operator-based tracking) et neutralise ses composants sur les pages web.",
   "permissions": [
     "declarativeNetRequest",

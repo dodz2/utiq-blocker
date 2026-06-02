@@ -1,6 +1,6 @@
 {
   "name": "utiq-blocker",
-  "version": "1.0.0",
+  "version": "1.2.2",
   "description": "Extension Firefox qui bloque le tracking Utiq (operator-based tracking).",
   "type": "module",
   "scripts": {
